@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>WEEX Trading Dashboard</title>
+
+<link
+    rel="stylesheet"
+    href="/dashboard/dashboard.css"
+>
+
+
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- ==================================================
+         HEADER
+         ================================================== -->
+
+    <header class="header">
+
+        <div>
+
+            <div class="eyebrow">
+                WEEX V3 USDT-M FUTURES
+            </div>
+
+            <h1>
+                Trading Dashboard
+            </h1>
+
+            <p class="subtitle">
+                Order-flow monitoring and bot status
+            </p>
+
+        </div>
+
+
+        <div class="header-actions">
+
+            <span
+                id="connectionStatus"
+                class="connection disconnected"
+            >
+                ● OFFLINE
+            </span>
+
+            <button
+                id="refreshButton"
+                class="button primary"
+                onclick="loadDashboard()"
+            >
+                ↻ Refresh
+            </button>
+
+        </div>
+
+    </header>
+
+
+    <!-- ==================================================
+         TOP STATUS CARDS
+         ================================================== -->
+
+    <section class="cards">
+
+        <div class="card">
+
+            <div class="card-label">
+                BOT STATUS
+            </div>
+
+            <div
+                id="botStatus"
+                class="card-value"
+            >
+                --
+            </div>
+
+            <div
+                id="botMode"
+                class="card-detail"
+            >
+                --
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <div class="card-label">
+                AVAILABLE BALANCE
+            </div>
+
+            <div
+                id="balance"
+                class="card-value"
+            >
+                --
+            </div>
+
+            <div class="card-detail">
+                USDT
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <div class="card-label">
+                POSITION NOTIONAL
+            </div>
+
+            <div
+                id="notional"
+                class="card-value"
+            >
+                --
+            </div>
+
+            <div class="card-detail">
+                USDT
+            </div>
+
+        </div>
+
+
+        <div class="card">
+
+            <div class="card-label">
+                SYMBOLS
+            </div>
+
+            <div
+                id="symbolCount"
+                class="card-value"
+            >
+                --
+            </div>
+
+            <div class="card-detail">
+                WEEX contracts
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         ORDER FLOW STATISTICS
+         ================================================== -->
+
+    <section class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <div class="eyebrow">
+                    LIVE SESSION DATA
+                </div>
+
+                <h2>
+                    Order Flow Statistics
+                </h2>
+
+            </div>
+
+            <button
+                class="button danger"
+                onclick="resetStatistics()"
+            >
+                Reset Statistics
+            </button>
+
+        </div>
+
+
+        <div class="stats-grid">
+
+            <div class="stat-box">
+
+                <span class="stat-label">
+                    Total Checks
+                </span>
+
+                <strong id="totalChecks">
+                    0
+                </strong>
+
+            </div>
+
+
+            <div class="stat-box accepted">
+
+                <span class="stat-label">
+                    Accepted
+                </span>
+
+                <strong id="accepted">
+                    0
+                </strong>
+
+            </div>
+
+
+            <div class="stat-box rejected">
+
+                <span class="stat-label">
+                    Rejected
+                </span>
+
+                <strong id="rejected">
+                    0
+                </strong>
+
+            </div>
+
+
+            <div class="stat-box">
+
+                <span class="stat-label">
+                    Acceptance Rate
+                </span>
+
+                <strong id="acceptanceRate">
+                    0%
+                </strong>
+
+            </div>
+
+
+            <div class="stat-box">
+
+                <span class="stat-label">
+                    Rejection Rate
+                </span>
+
+                <strong id="rejectionRate">
+                    0%
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <!-- ACCEPTANCE BAR -->
+
+        <div class="rate-section">
+
+            <div class="rate-header">
+
+                <span>
+                    Acceptance / Rejection
+                </span>
+
+                <span id="rateText">
+                    0% / 0%
+                </span>
+
+            </div>
+
+            <div class="rate-bar">
+
+                <div
+                    id="acceptanceBar"
+                    class="acceptance-bar"
+                ></div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         LONG / SHORT
+         ================================================== -->
+
+    <section class="two-columns">
+
+        <div class="panel">
+
+            <div class="panel-header">
+
+                <h2>
+                    Long Signals
+                </h2>
+
+            </div>
+
+
+            <div class="signal-stats">
+
+                <div>
+                    <span>
+                        Total
+                    </span>
+
+                    <strong id="longTotal">
+                        0
+                    </strong>
+                </div>
+
+
+                <div>
+                    <span>
+                        Accepted
+                    </span>
+
+                    <strong
+                        id="longAccepted"
+                        class="text-success"
+                    >
+                        0
+                    </strong>
+                </div>
+
+
+                <div>
+                    <span>
+                        Rejected
+                    </span>
+
+                    <strong
+                        id="longRejected"
+                        class="text-danger"
+                    >
+                        0
+                    </strong>
+                </div>
+
+
+                <div>
+                    <span>
+                        Acceptance
+                    </span>
+
+                    <strong id="longRate">
+                        0%
+                    </strong>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="panel">
+
+            <div class="panel-header">
+
+                <h2>
+                    Short Signals
+                </h2>
+
+            </div>
+
+
+            <div class="signal-stats">
+
+                <div>
+                    <span>
+                        Total
+                    </span>
+
+                    <strong id="shortTotal">
+                        0
+                    </strong>
+                </div>
+
+
+                <div>
+                    <span>
+                        Accepted
+                    </span>
+
+                    <strong
+                        id="shortAccepted"
+                        class="text-success"
+                    >
+                        0
+                    </strong>
+                </div>
+
+
+                <div>
+                    <span>
+                        Rejected
+                    </span>
+
+                    <strong
+                        id="shortRejected"
+                        class="text-danger"
+                    >
+                        0
+                    </strong>
+                </div>
+
+
+                <div>
+                    <span>
+                        Acceptance
+                    </span>
+
+                    <strong id="shortRate">
+                        0%
+                    </strong>
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         ORDER BOOK CONFIGURATION
+         ================================================== -->
+
+    <section class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <div class="eyebrow">
+                    FILTER CONFIGURATION
+                </div>
+
+                <h2>
+                    Order Book Filter
+                </h2>
+
+            </div>
+
+            <span
+                id="filterStatus"
+                class="badge"
+            >
+                --
+            </span>
+
+        </div>
+
+
+        <div class="config-grid">
+
+            <div class="config-item">
+
+                <span>
+                    Depth
+                </span>
+
+                <strong id="depth">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="config-item">
+
+                <span>
+                    Long Min Imbalance
+                </span>
+
+                <strong id="longImbalance">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="config-item">
+
+                <span>
+                    Short Max Imbalance
+                </span>
+
+                <strong id="shortImbalance">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="config-item">
+
+                <span>
+                    Min Bid / Ask
+                </span>
+
+                <strong id="bidAskRatio">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="config-item">
+
+                <span>
+                    Min Ask / Bid
+                </span>
+
+                <strong id="askBidRatio">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         RISK
+         ================================================== -->
+
+    <section class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <div class="eyebrow">
+                    POSITION SETTINGS
+                </div>
+
+                <h2>
+                    Risk Configuration
+                </h2>
+
+            </div>
+
+        </div>
+
+
+        <div class="config-grid">
+
+            <div class="config-item">
+
+                <span>
+                    Margin
+                </span>
+
+                <strong id="margin">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="config-item">
+
+                <span>
+                    Leverage
+                </span>
+
+                <strong id="leverage">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="config-item">
+
+                <span>
+                    Margin Mode
+                </span>
+
+                <strong id="marginMode">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="config-item">
+
+                <span>
+                    Trading
+                </span>
+
+                <strong id="tradingEnabled">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="config-item">
+
+                <span>
+                    Reversal
+                </span>
+
+                <strong id="reversal">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         SYMBOLS
+         ================================================== -->
+
+    <section class="panel">
+
+        <div class="panel-header">
+
+            <div>
+
+                <div class="eyebrow">
+                    WEEX MARKET
+                </div>
+
+                <h2>
+                    Available Symbols
+                </h2>
+
+            </div>
+
+            <span
+                id="symbolsLoaded"
+                class="badge"
+            >
+                0
+            </span>
+
+        </div>
+
+
+        <div
+            id="symbols"
+            class="symbols"
+        >
+            Loading...
+        </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         FOOTER
+         ================================================== -->
+
+    <footer>
+
+        <span>
+            WEEX Trading Bot V3
+        </span>
+
+        <span>
+            Last update:
+            <strong id="lastUpdate">
+                --
+            </strong>
+        </span>
+
+    </footer>
+
+</div>
+
+
+<!-- ======================================================
+     JAVASCRIPT
+     ====================================================== -->
+
+<script>
+
+    function setText(
+        id,
+        value
+    ) {
+
+        const element =
+            document.getElementById(id);
+
+        if (element) {
+            element.textContent =
+                value ?? "--";
+        }
+    }
+
+
+    function formatPercent(
+        value
+    ) {
+
+        const number =
+            Number(value);
+
+        if (
+            !Number.isFinite(number)
+        ) {
+            return "0%";
+        }
+
+        return (
+            number.toFixed(2) +
+            "%"
+        );
+    }
+
+
+    function calculateRate(
+        accepted,
+        total
+    ) {
+
+        if (
+            !total ||
+            total <= 0
+        ) {
+            return 0;
+        }
+
+        return (
+            accepted /
+            total *
+            100
+        );
+    }
+
+
+    function updateStatistics(
+        stats
+    ) {
+
+        if (!stats) {
+            return;
+        }
+
+
+        const total =
+            Number(
+                stats.total || 0
+            );
+
+        const accepted =
+            Number(
+                stats.accepted || 0
+            );
+
+        const rejected =
+            Number(
+                stats.rejected || 0
+            );
+
+
+        const acceptanceRate =
+            Number(
+                stats.acceptanceRate ??
+                calculateRate(
+                    accepted,
+                    total
+                )
+            );
+
+        const rejectionRate =
+            Number(
+                stats.rejectionRate ??
+                calculateRate(
+                    rejected,
+                    total
+                )
+            );
+
+
+        setText(
+            "totalChecks",
+            total
+        );
+
+        setText(
+            "accepted",
+            accepted
+        );
+
+        setText(
+            "rejected",
+            rejected
+        );
+
+        setText(
+            "acceptanceRate",
+            formatPercent(
+                acceptanceRate
+            )
+        );
+
+        setText(
+            "rejectionRate",
+            formatPercent(
+                rejectionRate
+            )
+        );
+
+
+        setText(
+            "rateText",
+            `${formatPercent(acceptanceRate)} / ${formatPercent(rejectionRate)}`
+        );
+
+
+        const acceptanceBar =
+            document.getElementById(
+                "acceptanceBar"
+            );
+
+
+        if (acceptanceBar) {
+
+            acceptanceBar.style.width =
+                Math.min(
+                    Math.max(
+                        acceptanceRate,
+                        0
+                    ),
+                    100
+                ) +
+                "%";
+        }
+
+
+        const long =
+            stats.long || {};
+
+        const short =
+            stats.short || {};
+
+
+        const longTotal =
+            Number(
+                long.total || 0
+            );
+
+        const longAccepted =
+            Number(
+                long.accepted || 0
+            );
+
+        const longRejected =
+            Number(
+                long.rejected || 0
+            );
+
+
+        const shortTotal =
+            Number(
+                short.total || 0
+            );
+
+        const shortAccepted =
+            Number(
+                short.accepted || 0
+            );
+
+        const shortRejected =
+            Number(
+                short.rejected || 0
+            );
+
+
+        setText(
+            "longTotal",
+            longTotal
+        );
+
+        setText(
+            "longAccepted",
+            longAccepted
+        );
+
+        setText(
+            "longRejected",
+            longRejected
+        );
+
+        setText(
+            "longRate",
+            formatPercent(
+                calculateRate(
+                    longAccepted,
+                    longTotal
+                )
+            )
+        );
+
+
+        setText(
+            "shortTotal",
+            shortTotal
+        );
+
+        setText(
+            "shortAccepted",
+            shortAccepted
+        );
+
+        setText(
+            "shortRejected",
+            shortRejected
+        );
+
+        setText(
+            "shortRate",
+            formatPercent(
+                calculateRate(
+                    shortAccepted,
+                    shortTotal
+                )
+            )
+        );
+
+    }
+
+
+    function updateStatus(
+        data
+    ) {
+
+        if (!data) {
+            return;
+        }
+
+
+        setText(
+            "botStatus",
+            data.online
+                ? "ONLINE"
+                : "OFFLINE"
+        );
+
+
+        setText(
+            "botMode",
+            data.mode || "--"
+        );
+
+
+        setText(
+            "balance",
+            Number(
+                data.balance || 0
+            ).toFixed(4)
+        );
+
+
+        setText(
+            "notional",
+            Number(
+                data.defaultRisk?.positionNotional || 0
+            ).toFixed(2)
+        );
+
+
+        setText(
+            "symbolCount",
+            data.discoveredSymbols || 0
+        );
+
+
+        setText(
+            "margin",
+            `${data.defaultRisk?.margin ?? "--"} USDT`
+        );
+
+
+        setText(
+            "leverage",
+            `${data.defaultRisk?.leverage ?? "--"}x`
+        );
+
+
+        setText(
+            "marginMode",
+            data.marginMode || "--"
+        );
+
+
+        setText(
+            "tradingEnabled",
+            data.tradingEnabled
+                ? "ENABLED"
+                : "DISABLED"
+        );
+
+
+        setText(
+            "reversal",
+            data.reversal || "--"
+        );
+
+
+        const filter =
+            data.orderBookFilter || {};
+
+
+        setText(
+            "depth",
+            filter.depth ?? "--"
+        );
+
+
+        setText(
+            "longImbalance",
+            filter.longMinImbalance ?? "--"
+        );
+
+
+        setText(
+            "shortImbalance",
+            filter.shortMaxImbalance ?? "--"
+        );
+
+
+        setText(
+            "bidAskRatio",
+            filter.minBidAskRatio ?? "--"
+        );
+
+
+        setText(
+            "askBidRatio",
+            filter.minAskBidRatio ?? "--"
+        );
+
+
+        const filterStatus =
+            document.getElementById(
+                "filterStatus"
+            );
+
+
+        if (filterStatus) {
+
+            filterStatus.textContent =
+                filter.enabled
+                    ? "ENABLED"
+                    : "DISABLED";
+
+            filterStatus.className =
+                filter.enabled
+                    ? "badge success"
+                    : "badge danger";
+        }
+
+
+        updateStatistics(
+            data.orderFlowStatistics
+        );
+
+
+        setConnection(
+            true
+        );
+
+    }
+
+
+    function updateSymbols(
+        symbols
+    ) {
+
+        const container =
+            document.getElementById(
+                "symbols"
+            );
+
+
+        if (!container) {
+            return;
+        }
+
+
+        if (
+            !Array.isArray(symbols) ||
+            symbols.length === 0
+        ) {
+
+            container.innerHTML =
+                "<span>No symbols available.</span>";
+
+            setText(
+                "symbolsLoaded",
+                "0"
+            );
+
+            return;
+        }
+
+
+        setText(
+            "symbolsLoaded",
+            symbols.length
+        );
+
+
+        container.innerHTML =
+            symbols
+                .map(
+                    symbol =>
+                        `<span class="symbol">${symbol}</span>`
+                )
+                .join("");
+
+    }
+
+
+    function setConnection(
+        connected
+    ) {
+
+        const element =
+            document.getElementById(
+                "connectionStatus"
+            );
+
+
+        if (!element) {
+            return;
+        }
+
+
+        if (connected) {
+
+            element.textContent =
+                "● ONLINE";
+
+            element.className =
+                "connection connected";
+
+        } else {
+
+            element.textContent =
+                "● OFFLINE";
+
+            element.className =
+                "connection disconnected";
+        }
+
+    }
+
+
+    async function loadDashboard() {
+
+        const button =
+            document.getElementById(
+                "refreshButton"
+            );
+
+
+        if (button) {
+
+            button.disabled =
+                true;
+
+            button.textContent =
+                "↻ Loading...";
+        }
+
+
+        try {
+
+            const response =
+                await fetch(
+                    "/status",
+                    {
+                        cache: "no-store"
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    `Status HTTP ${response.status}`
+                );
+            }
+
+
+            const data =
+                await response.json();
+
+
+            updateStatus(
+                data
+            );
+
+
+            updateSymbols(
+                data.symbols
+            );
+
+
+            setText(
+                "lastUpdate",
+                new Date()
+                    .toLocaleString()
+            );
+
+
+        } catch (error) {
+
+            console.error(
+                "Dashboard error:",
+                error
+            );
+
+
+            setConnection(
+                false
+            );
+
+            setText(
+                "botStatus",
+                "ERROR"
+            );
+
+
+        } finally {
+
+            if (button) {
+
+                button.disabled =
+                    false;
+
+                button.textContent =
+                    "↻ Refresh";
+            }
+        }
+
+    }
+
+
+    async function resetStatistics() {
+
+        const confirmed =
+            window.confirm(
+                "Reset all order-flow statistics?"
+            );
+
+
+        if (!confirmed) {
+            return;
+        }
+
+
+        try {
+
+            const response =
+                await fetch(
+                    "/orderflow-stats/reset",
+                    {
+                        method: "POST"
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    `Reset HTTP ${response.status}`
+                );
+            }
+
+
+            const data =
+                await response.json();
+
+
+            updateStatistics(
+                data.statistics
+            );
+
+
+            setText(
+                "lastUpdate",
+                new Date()
+                    .toLocaleString()
+            );
+
+
+        } catch (error) {
+
+            console.error(
+                "Reset error:",
+                error
+            );
+
+            alert(
+                "Could not reset statistics."
+            );
+        }
+
+    }
+
+
+    // ==================================================
+    // INITIAL LOAD ONLY
+    // ==================================================
+
+    window.addEventListener(
+        "DOMContentLoaded",
+        () => {
+
+            loadDashboard();
+
+        }
+    );
+
+</script>
+
+
+</body>
+
+</html>

@@ -3,6 +3,9 @@ require("dotenv").config();
 const express =
     require("express");
 
+const path =
+    require("path");
+
 const {
     PORT,
     DEFAULT_MARGIN,
@@ -53,6 +56,15 @@ app.use(
     express.json()
 );
 
+app.use(
+    "/dashboard",
+    express.static(
+        path.join(
+            __dirname,
+            "dashboard"
+        )
+    )
+);
 
 // ============================================================
 // STARTUP
@@ -1046,109 +1058,20 @@ app.get(
 
 
 // ============================================================
-// ROOT
+// DASHBOARD
 // ============================================================
 
 app.get(
     "/",
     (req, res) => {
 
-        res.json({
-
-            status:
-                "online",
-
-            service:
-                "TradingView -> WEEX V3 Server V3",
-
-            trading:
-                TRADING_ENABLED,
-
-            mode:
-                TRADING_ENABLED
-                    ? "LIVE"
-                    : "DISABLED",
-
-            api:
-                "WEEX V3 USDT-M Futures",
-
-            marginMode:
-                REQUIRED_MARGIN_MODE,
-
-            defaultRisk: {
-
-                margin:
-                    DEFAULT_MARGIN,
-
-                leverage:
-                    DEFAULT_LEVERAGE,
-
-                positionNotional:
-                    DEFAULT_MARGIN *
-                    DEFAULT_LEVERAGE
-            },
-
-            orderBookFilter:
-                getStatusConfig()
-                    .orderBook,
-
-            orderFlowStatistics:
-                getOrderBookStats(),
-
-            reversal:
-                "CLOSE -> CONFIRM FLAT -> FRESH ORDER BOOK -> OPEN",
-
-            discoveredSymbols:
-                SUPPORTED_SYMBOLS.size,
-
-            behavior:
-                "LONG/SHORT automatic reversal + CLOSE_LONG/CLOSE_SHORT",
-
-            webhookMode:
-                "Immediate HTTP 200 + background processing",
-
-            concurrency:
-                "Per-symbol locks",
-
-            automaticSymbolDiscovery:
-                true,
-
-            endpoints: {
-
-                webhook:
-                    "POST /webhook",
-
-                manualLong:
-                    "POST /manual-long?symbol=BTCUSDT",
-
-                manualShort:
-                    "POST /manual-short?symbol=BTCUSDT",
-
-                manualClose:
-                    "POST /manual-close?symbol=BTCUSDT",
-
-                testOrderBook:
-                    "GET /test-orderbook?symbol=BTCUSDT&direction=LONG",
-
-                orderFlowStats:
-                    "GET /orderflow-stats",
-
-                resetOrderFlowStats:
-                    "POST /orderflow-stats/reset",
-
-                status:
-                    "GET /status",
-
-                symbols:
-                    "GET /symbols",
-
-                position:
-                    "GET /position?symbol=BTCUSDT",
-
-                refresh:
-                    "POST /refresh-symbols"
-            }
-        });
+        res.sendFile(
+            path.join(
+                __dirname,
+                "dashboard",
+                "dashboard.html"
+            )
+        );
     }
 );
 

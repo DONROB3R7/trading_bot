@@ -1,6 +1,7 @@
 require("dotenv").config();
 
-const express = require("express");
+const express =
+    require("express");
 
 const {
     PORT,
@@ -46,6 +47,7 @@ const {
 
 const app =
     express();
+
 
 app.use(
     express.json()
@@ -136,8 +138,8 @@ console.log(
 );
 
 console.log(
-    "Statistics:",
-    "ORDER BOOK PASS / BLOCK TRACKING"
+    "Order-flow statistics:",
+    "ENABLED"
 );
 
 console.log(
@@ -170,6 +172,7 @@ app.post(
         section(
             "TRADINGVIEW WEBHOOK RECEIVED"
         );
+
 
         console.log(
             pretty(req.body)
@@ -320,6 +323,18 @@ app.post(
 
                         console.log(
                             pretty(result)
+                        );
+
+                        console.log("");
+
+                        console.log(
+                            "ORDER FLOW STATISTICS:"
+                        );
+
+                        console.log(
+                            pretty(
+                                getOrderBookStats()
+                            )
                         );
 
                         console.log(
@@ -622,6 +637,11 @@ app.get(
                 "NEVER PLACED"
             );
 
+            console.log(
+                "STATISTICS:",
+                "NOT COUNTED"
+            );
+
 
             const result =
                 await checkOrderBook(
@@ -642,6 +662,9 @@ app.get(
                     true,
 
                 orderPlaced:
+                    false,
+
+                countedInStatistics:
                     false,
 
                 symbol,
@@ -679,6 +702,9 @@ app.get(
                     orderPlaced:
                         false,
 
+                    countedInStatistics:
+                        false,
+
                     error:
                         error.message,
 
@@ -692,125 +718,54 @@ app.get(
 
 
 // ============================================================
-// ORDER BOOK STATISTICS
+// ORDER FLOW STATISTICS
 // ============================================================
 
 app.get(
-    "/orderbook-stats",
+    "/orderflow-stats",
     (req, res) => {
 
-        try {
+        return res.json({
 
-            const stats =
-                getOrderBookStats();
+            success:
+                true,
 
-
-            return res.json({
-
-                success:
-                    true,
-
-                statistics:
-                    stats
-
-            });
-
-
-        } catch (error) {
-
-            console.error("");
-
-            console.error(
-                "ORDER BOOK STATS ERROR"
-            );
-
-            console.error(
-                error.message
-            );
-
-
-            return res
-                .status(500)
-                .json({
-
-                    success:
-                        false,
-
-                    error:
-                        error.message
-                });
-        }
+            statistics:
+                getOrderBookStats()
+        });
     }
 );
 
 
 // ============================================================
-// RESET ORDER BOOK STATISTICS
+// RESET ORDER FLOW STATISTICS
 // ============================================================
 
 app.post(
-    "/orderbook-stats/reset",
+    "/orderflow-stats/reset",
     (req, res) => {
 
-        try {
-
-            const result =
-                resetOrderBookStats();
+        resetOrderBookStats();
 
 
-            console.log("");
+        console.log("");
 
-            console.log(
-                "============================================================"
-            );
-
-            console.log(
-                "ORDER BOOK STATISTICS RESET"
-            );
-
-            console.log(
-                "============================================================"
-            );
+        console.log(
+            "ORDER FLOW STATISTICS RESET"
+        );
 
 
-            return res.json({
+        return res.json({
 
-                success:
-                    true,
+            success:
+                true,
 
-                message:
-                    "Order book statistics reset.",
+            message:
+                "Order-flow statistics reset.",
 
-                statistics:
-                    result
-
-            });
-
-
-        } catch (error) {
-
-            console.error("");
-
-            console.error(
-                "ORDER BOOK STATS RESET ERROR"
-            );
-
-            console.error(
-                error.message
-            );
-
-
-            return res
-                .status(500)
-                .json({
-
-                    success:
-                        false,
-
-                    error:
-                        error.message
-                });
-        }
+            statistics:
+                getOrderBookStats()
+        });
     }
 );
 
@@ -884,6 +839,9 @@ app.get(
             orderBook:
                 getStatusConfig()
                     .orderBook,
+
+            orderFlowStatistics:
+                getOrderBookStats(),
 
             symbols
         });
@@ -986,7 +944,7 @@ app.get(
                     getStatusConfig()
                         .orderBook,
 
-                orderBookStatistics:
+                orderFlowStatistics:
                     getOrderBookStats(),
 
                 reversal:
@@ -1134,7 +1092,7 @@ app.get(
                 getStatusConfig()
                     .orderBook,
 
-            orderBookStatistics:
+            orderFlowStatistics:
                 getOrderBookStats(),
 
             reversal:
@@ -1151,9 +1109,6 @@ app.get(
 
             concurrency:
                 "Per-symbol locks",
-
-            statistics:
-                "Order book PASS / BLOCK tracking",
 
             automaticSymbolDiscovery:
                 true,
@@ -1175,11 +1130,11 @@ app.get(
                 testOrderBook:
                     "GET /test-orderbook?symbol=BTCUSDT&direction=LONG",
 
-                orderBookStats:
-                    "GET /orderbook-stats",
+                orderFlowStats:
+                    "GET /orderflow-stats",
 
-                resetOrderBookStats:
-                    "POST /orderbook-stats/reset",
+                resetOrderFlowStats:
+                    "POST /orderflow-stats/reset",
 
                 status:
                     "GET /status",
@@ -1226,7 +1181,7 @@ app.listen(
 
         console.log(
             "API:",
-            "WEEX V3 USDT-M FUTURES"
+            "WEEX V3 USDT-M Futures"
         );
 
         console.log(
@@ -1274,8 +1229,8 @@ app.listen(
         );
 
         console.log(
-            "Statistics:",
-            "PASS / BLOCK TRACKING"
+            "Order-flow statistics:",
+            "ENABLED"
         );
 
         console.log(
@@ -1363,21 +1318,31 @@ app.listen(
             console.log("");
 
             console.log(
-                "ORDER BOOK STATISTICS:"
+                "ORDER FLOW STATISTICS:"
             );
 
             console.log(
-                "GET /orderbook-stats"
+                "GET /orderflow-stats"
             );
 
             console.log("");
 
             console.log(
-                "RESET STATISTICS:"
+                "RESET ORDER FLOW STATISTICS:"
             );
 
             console.log(
-                "POST /orderbook-stats/reset"
+                "POST /orderflow-stats/reset"
+            );
+
+            console.log("");
+
+            console.log(
+                "STATUS:"
+            );
+
+            console.log(
+                "GET /status"
             );
 
             console.log("");
@@ -1387,7 +1352,7 @@ app.listen(
             );
 
             console.log(
-                'Invoke-RestMethod -Method GET -Uri "http://localhost:3000/orderbook-stats"'
+                'Invoke-RestMethod -Method GET -Uri "http://localhost:3000/orderflow-stats"'
             );
 
             console.log("");

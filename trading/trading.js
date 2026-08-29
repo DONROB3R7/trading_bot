@@ -36,6 +36,339 @@ const {
 
 
 // ============================================================
+// ORDER FLOW STATISTICS
+// ============================================================
+
+const orderBookStats = {
+    total: 0,
+
+    accepted: 0,
+
+    rejected: 0,
+
+    long: {
+        checked: 0,
+        accepted: 0,
+        rejected: 0
+    },
+
+    short: {
+        checked: 0,
+        accepted: 0,
+        rejected: 0
+    },
+
+    reasons: {},
+
+    symbols: {}
+};
+
+
+function recordOrderBookResult(
+    symbol,
+    direction,
+    result
+) {
+
+    if (
+        direction !== "LONG" &&
+        direction !== "SHORT"
+    ) {
+        return;
+    }
+
+
+    symbol =
+        normalizeSymbol(symbol);
+
+
+    orderBookStats.total++;
+
+
+    const side =
+        direction.toLowerCase();
+
+
+    orderBookStats[
+        side
+    ].checked++;
+
+
+    // --------------------------------------------------------
+    // CREATE SYMBOL STATISTICS
+    // --------------------------------------------------------
+
+    if (
+        !orderBookStats.symbols[
+            symbol
+        ]
+    ) {
+
+        orderBookStats.symbols[
+            symbol
+        ] = {
+
+            total: 0,
+
+            accepted: 0,
+
+            rejected: 0,
+
+            long: {
+                checked: 0,
+                accepted: 0,
+                rejected: 0
+            },
+
+            short: {
+                checked: 0,
+                accepted: 0,
+                rejected: 0
+            },
+
+            reasons: {}
+        };
+    }
+
+
+    const symbolStats =
+        orderBookStats.symbols[
+            symbol
+        ];
+
+
+    symbolStats.total++;
+
+
+    symbolStats[
+        side
+    ].checked++;
+
+
+    // --------------------------------------------------------
+    // ACCEPTED
+    // --------------------------------------------------------
+
+    if (
+        result.allowed
+    ) {
+
+        orderBookStats.accepted++;
+
+        orderBookStats[
+            side
+        ].accepted++;
+
+
+        symbolStats.accepted++;
+
+        symbolStats[
+            side
+        ].accepted++;
+
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // REJECTED
+    // --------------------------------------------------------
+
+    orderBookStats.rejected++;
+
+    orderBookStats[
+        side
+    ].rejected++;
+
+
+    symbolStats.rejected++;
+
+    symbolStats[
+        side
+    ].rejected++;
+
+
+    const reason =
+        result.reason ||
+        "UNKNOWN";
+
+
+    orderBookStats.reasons[
+        reason
+    ] =
+        (
+            orderBookStats.reasons[
+                reason
+            ] ||
+            0
+        ) + 1;
+
+
+    symbolStats.reasons[
+        reason
+    ] =
+        (
+            symbolStats.reasons[
+                reason
+            ] ||
+            0
+        ) + 1;
+}
+
+
+// ============================================================
+// ORDER FLOW STATISTICS GETTER
+// ============================================================
+
+function getOrderBookStats() {
+
+    const total =
+        orderBookStats.total;
+
+
+    const acceptanceRate =
+        total > 0
+            ? (
+                orderBookStats.accepted /
+                total
+            ) * 100
+            : 0;
+
+
+    const rejectionRate =
+        total > 0
+            ? (
+                orderBookStats.rejected /
+                total
+            ) * 100
+            : 0;
+
+
+    const symbols = {};
+
+
+    for (
+        const symbol of Object.keys(
+            orderBookStats.symbols
+        )
+    ) {
+
+        const data =
+            orderBookStats.symbols[
+                symbol
+            ];
+
+
+        symbols[
+            symbol
+        ] = {
+
+            ...data,
+
+            acceptanceRate:
+                data.total > 0
+                    ? Number(
+                        (
+                            data.accepted /
+                            data.total
+                        ) *
+                        100
+                    .toFixed(2)
+                    )
+                    : 0,
+
+            rejectionRate:
+                data.total > 0
+                    ? Number(
+                        (
+                            data.rejected /
+                            data.total
+                        ) *
+                        100
+                    .toFixed(2)
+                    )
+                    : 0,
+
+            reasons:
+                {
+                    ...data.reasons
+                }
+        };
+    }
+
+
+    return {
+
+        total,
+
+        accepted:
+            orderBookStats.accepted,
+
+        rejected:
+            orderBookStats.rejected,
+
+        acceptanceRate:
+            Number(
+                acceptanceRate.toFixed(2)
+            ),
+
+        rejectionRate:
+            Number(
+                rejectionRate.toFixed(2)
+            ),
+
+        long: {
+            ...orderBookStats.long
+        },
+
+        short: {
+            ...orderBookStats.short
+        },
+
+        reasons: {
+            ...orderBookStats.reasons
+        },
+
+        symbols
+    };
+}
+
+
+// ============================================================
+// RESET ORDER FLOW STATISTICS
+// ============================================================
+
+function resetOrderBookStats() {
+
+    orderBookStats.total = 0;
+
+    orderBookStats.accepted = 0;
+
+    orderBookStats.rejected = 0;
+
+
+    orderBookStats.long = {
+        checked: 0,
+        accepted: 0,
+        rejected: 0
+    };
+
+
+    orderBookStats.short = {
+        checked: 0,
+        accepted: 0,
+        rejected: 0
+    };
+
+
+    orderBookStats.reasons = {};
+
+    orderBookStats.symbols = {};
+}
+
+
+// ============================================================
 // PER SYMBOL LOCKS
 // ============================================================
 
@@ -62,12 +395,14 @@ async function acquireTradingLock(
     symbol =
         normalizeSymbol(symbol);
 
+
     while (
         symbolLocks.get(symbol)
     ) {
 
         await sleep(25);
     }
+
 
     symbolLocks.set(
         symbol,
@@ -83,440 +418,6 @@ function releaseTradingLock(
     symbolLocks.delete(
         normalizeSymbol(symbol)
     );
-}
-
-
-// ============================================================
-// ORDER FLOW STATISTICS
-// ============================================================
-//
-// These statistics measure what happens AFTER a signal reaches
-// the server.
-//
-// ACCEPTED:
-//   Order book passed and an entry order was opened.
-//
-// REJECTED:
-//   Order book blocked the requested entry.
-//
-// NO ACTION:
-//   Signal arrived but no new order was necessary because the
-//   current position was already in the requested direction.
-//
-// REVERSAL BLOCKED:
-//   Existing position was closed, but the fresh order-book check
-//   rejected the new direction.
-//
-// CLOSE:
-//   Close signals are tracked separately and are not included
-//   in entry accept/reject rate.
-//
-
-const signalStats = {
-
-    startedAt:
-        new Date().toISOString(),
-
-    totalSignals:
-        0,
-
-    longSignals:
-        0,
-
-    shortSignals:
-        0,
-
-    accepted:
-        0,
-
-    rejected:
-        0,
-
-    noAction:
-        0,
-
-    reversalBlocked:
-        0,
-
-    closeSignals:
-        0,
-
-    errors:
-        0,
-
-    symbols:
-        {}
-};
-
-
-// ============================================================
-// CREATE SYMBOL STATISTICS
-// ============================================================
-
-function createSymbolStats() {
-
-    return {
-
-        totalSignals:
-            0,
-
-        longSignals:
-            0,
-
-        shortSignals:
-            0,
-
-        accepted:
-            0,
-
-        rejected:
-            0,
-
-        noAction:
-            0,
-
-        reversalBlocked:
-            0,
-
-        closeSignals:
-            0,
-
-        errors:
-            0
-    };
-}
-
-
-// ============================================================
-// GET SYMBOL STATISTICS
-// ============================================================
-
-function getSymbolStats(
-    symbol
-) {
-
-    symbol =
-        normalizeSymbol(symbol);
-
-    if (
-        !signalStats.symbols[symbol]
-    ) {
-
-        signalStats.symbols[symbol] =
-            createSymbolStats();
-    }
-
-    return signalStats.symbols[symbol];
-}
-
-
-// ============================================================
-// RECORD SIGNAL
-// ============================================================
-
-function recordSignal(
-    symbol,
-    action
-) {
-
-    const stats =
-        getSymbolStats(symbol);
-
-
-    signalStats.totalSignals++;
-    stats.totalSignals++;
-
-
-    if (
-        action === "LONG"
-    ) {
-
-        signalStats.longSignals++;
-        stats.longSignals++;
-
-    } else if (
-        action === "SHORT"
-    ) {
-
-        signalStats.shortSignals++;
-        stats.shortSignals++;
-
-    } else if (
-        action === "CLOSE" ||
-        action === "CLOSE_LONG" ||
-        action === "CLOSE_SHORT"
-    ) {
-
-        signalStats.closeSignals++;
-        stats.closeSignals++;
-    }
-}
-
-
-// ============================================================
-// RECORD ACCEPTED
-// ============================================================
-
-function recordAccepted(
-    symbol
-) {
-
-    const stats =
-        getSymbolStats(symbol);
-
-    signalStats.accepted++;
-    stats.accepted++;
-}
-
-
-// ============================================================
-// RECORD REJECTED
-// ============================================================
-
-function recordRejected(
-    symbol
-) {
-
-    const stats =
-        getSymbolStats(symbol);
-
-    signalStats.rejected++;
-    stats.rejected++;
-}
-
-
-// ============================================================
-// RECORD NO ACTION
-// ============================================================
-
-function recordNoAction(
-    symbol
-) {
-
-    const stats =
-        getSymbolStats(symbol);
-
-    signalStats.noAction++;
-    stats.noAction++;
-}
-
-
-// ============================================================
-// RECORD REVERSAL BLOCKED
-// ============================================================
-
-function recordReversalBlocked(
-    symbol
-) {
-
-    const stats =
-        getSymbolStats(symbol);
-
-    signalStats.reversalBlocked++;
-    stats.reversalBlocked++;
-}
-
-
-// ============================================================
-// RECORD ERROR
-// ============================================================
-
-function recordError(
-    symbol
-) {
-
-    const stats =
-        getSymbolStats(symbol);
-
-    signalStats.errors++;
-    stats.errors++;
-}
-
-
-// ============================================================
-// PERCENTAGE HELPER
-// ============================================================
-
-function percentage(
-    value,
-    total
-) {
-
-    if (
-        !total
-    ) {
-
-        return 0;
-    }
-
-    return Number(
-        (
-            value /
-            total *
-            100
-        ).toFixed(2)
-    );
-}
-
-
-// ============================================================
-// BUILD STATISTICS
-// ============================================================
-
-function getSignalStats() {
-
-    const entrySignals =
-        signalStats.longSignals +
-        signalStats.shortSignals;
-
-
-    const blocked =
-        signalStats.rejected +
-        signalStats.reversalBlocked;
-
-
-    const acceptedRate =
-        percentage(
-            signalStats.accepted,
-            entrySignals
-        );
-
-
-    const rejectedRate =
-        percentage(
-            blocked,
-            entrySignals
-        );
-
-
-    const symbols = {};
-
-
-    for (
-        const symbol of Object.keys(
-            signalStats.symbols
-        )
-    ) {
-
-        const stats =
-            signalStats.symbols[symbol];
-
-
-        const symbolEntrySignals =
-            stats.longSignals +
-            stats.shortSignals;
-
-
-        const symbolBlocked =
-            stats.rejected +
-            stats.reversalBlocked;
-
-
-        symbols[symbol] = {
-
-            ...stats,
-
-            entrySignals:
-                symbolEntrySignals,
-
-            acceptedRate:
-                percentage(
-                    stats.accepted,
-                    symbolEntrySignals
-                ),
-
-            rejectedRate:
-                percentage(
-                    symbolBlocked,
-                    symbolEntrySignals
-                )
-        };
-    }
-
-
-    return {
-
-        startedAt:
-            signalStats.startedAt,
-
-        totalSignals:
-            signalStats.totalSignals,
-
-        entrySignals,
-
-        longSignals:
-            signalStats.longSignals,
-
-        shortSignals:
-            signalStats.shortSignals,
-
-        accepted:
-            signalStats.accepted,
-
-        rejected:
-            signalStats.rejected,
-
-        reversalBlocked:
-            signalStats.reversalBlocked,
-
-        noAction:
-            signalStats.noAction,
-
-        closeSignals:
-            signalStats.closeSignals,
-
-        errors:
-            signalStats.errors,
-
-        acceptedRate,
-
-        rejectedRate,
-
-        symbols
-    };
-}
-
-
-// ============================================================
-// RESET STATISTICS
-// ============================================================
-
-function resetSignalStats() {
-
-    signalStats.startedAt =
-        new Date().toISOString();
-
-    signalStats.totalSignals =
-        0;
-
-    signalStats.longSignals =
-        0;
-
-    signalStats.shortSignals =
-        0;
-
-    signalStats.accepted =
-        0;
-
-    signalStats.rejected =
-        0;
-
-    signalStats.noAction =
-        0;
-
-    signalStats.reversalBlocked =
-        0;
-
-    signalStats.closeSignals =
-        0;
-
-    signalStats.errors =
-        0;
-
-    signalStats.symbols =
-        {};
-
-    return getSignalStats();
 }
 
 
@@ -540,7 +441,9 @@ async function openMarketPosition(
     }
 
 
-    getSymbolSettings(symbol);
+    getSymbolSettings(
+        symbol
+    );
 
 
     // --------------------------------------------------------
@@ -555,11 +458,27 @@ async function openMarketPosition(
         );
 
 
+    // --------------------------------------------------------
+    // RECORD ORDER FLOW RESULT
+    // --------------------------------------------------------
+
+    recordOrderBookResult(
+        symbol,
+        direction,
+        orderBookCheck
+    );
+
+
+    // --------------------------------------------------------
+    // BLOCKED
+    // --------------------------------------------------------
+
     if (
         !orderBookCheck.allowed
     ) {
 
         console.log("");
+
         console.log(
             "############################################################"
         );
@@ -607,11 +526,6 @@ async function openMarketPosition(
         );
 
 
-        recordRejected(
-            symbol
-        );
-
-
         return {
 
             success:
@@ -625,12 +539,16 @@ async function openMarketPosition(
 
             orderBook:
                 orderBookCheck
-
         };
     }
 
 
+    // --------------------------------------------------------
+    // PASSED
+    // --------------------------------------------------------
+
     console.log("");
+
     console.log(
         `${symbol}: ORDER BOOK PASSED`
     );
@@ -666,7 +584,9 @@ async function openMarketPosition(
     // --------------------------------------------------------
 
     const price =
-        await getPrice(symbol);
+        await getPrice(
+            symbol
+        );
 
 
     // --------------------------------------------------------
@@ -691,7 +611,9 @@ async function openMarketPosition(
     // LEVERAGE
     // --------------------------------------------------------
 
-    await ensureLeverage(symbol);
+    await ensureLeverage(
+        symbol
+    );
 
 
     // --------------------------------------------------------
@@ -699,6 +621,7 @@ async function openMarketPosition(
     // --------------------------------------------------------
 
     console.log("");
+
     console.log(
         "============================================================"
     );
@@ -753,6 +676,7 @@ async function openMarketPosition(
 
 
     console.log("");
+
     console.log(
         "OPEN ORDER RESPONSE:"
     );
@@ -763,11 +687,6 @@ async function openMarketPosition(
             null,
             2
         )
-    );
-
-
-    recordAccepted(
-        symbol
     );
 
 
@@ -799,7 +718,9 @@ async function processSignal(
 ) {
 
     symbol =
-        normalizeSymbol(symbol);
+        normalizeSymbol(
+            symbol
+        );
 
 
     action =
@@ -825,23 +746,15 @@ async function processSignal(
 
 
     if (
-        !validActions.includes(action)
+        !validActions.includes(
+            action
+        )
     ) {
 
         throw new Error(
             "Action must be LONG, SHORT, CLOSE, CLOSE_LONG or CLOSE_SHORT."
         );
     }
-
-
-    // --------------------------------------------------------
-    // RECORD EVERY VALID SIGNAL
-    // --------------------------------------------------------
-
-    recordSignal(
-        symbol,
-        action
-    );
 
 
     if (
@@ -864,7 +777,6 @@ async function processSignal(
             symbol,
 
             action
-
         };
     }
 
@@ -881,6 +793,7 @@ async function processSignal(
     try {
 
         console.log("");
+
         console.log(
             "############################################################"
         );
@@ -938,11 +851,6 @@ async function processSignal(
                 );
 
 
-                recordNoAction(
-                    symbol
-                );
-
-
                 return {
 
                     success:
@@ -952,7 +860,6 @@ async function processSignal(
 
                     action:
                         "ALREADY_FLAT"
-
                 };
             }
 
@@ -961,11 +868,6 @@ async function processSignal(
                 action === "CLOSE_LONG" &&
                 current.direction !== "LONG"
             ) {
-
-                recordNoAction(
-                    symbol
-                );
-
 
                 return {
 
@@ -991,11 +893,6 @@ async function processSignal(
                 current.direction !== "SHORT"
             ) {
 
-                recordNoAction(
-                    symbol
-                );
-
-
                 return {
 
                     success:
@@ -1016,6 +913,7 @@ async function processSignal(
 
 
             console.log("");
+
             console.log(
                 `${symbol}: closing ${current.direction}`
             );
@@ -1081,11 +979,6 @@ async function processSignal(
             );
 
 
-            recordNoAction(
-                symbol
-            );
-
-
             return {
 
                 success:
@@ -1115,6 +1008,7 @@ async function processSignal(
         ) {
 
             console.log("");
+
             console.log(
                 `${symbol}: REVERSING`
             );
@@ -1152,6 +1046,7 @@ async function processSignal(
 
 
             console.log("");
+
             console.log(
                 `${symbol}: OLD POSITION CLOSED`
             );
@@ -1172,12 +1067,8 @@ async function processSignal(
                 openResult.blocked
             ) {
 
-                recordReversalBlocked(
-                    symbol
-                );
-
-
                 console.log("");
+
                 console.log(
                     `${symbol}: REVERSAL OPEN BLOCKED BY ORDER BOOK`
                 );
@@ -1261,6 +1152,7 @@ async function processSignal(
         ) {
 
             console.log("");
+
             console.log(
                 `${symbol}: ENTRY BLOCKED BY ORDER BOOK`
             );
@@ -1330,14 +1222,6 @@ async function processSignal(
         };
 
 
-    } catch (error) {
-
-        recordError(
-            symbol
-        );
-
-        throw error;
-
     } finally {
 
         releaseTradingLock(
@@ -1390,10 +1274,14 @@ function getStatusConfig() {
         },
 
         statistics:
-            getSignalStats()
+            getOrderBookStats()
     };
 }
 
+
+// ============================================================
+// EXPORTS
+// ============================================================
 
 module.exports = {
 
@@ -1414,7 +1302,7 @@ module.exports = {
 
     getStatusConfig,
 
-    getSignalStats,
+    getOrderBookStats,
 
-    resetSignalStats
+    resetOrderBookStats
 };

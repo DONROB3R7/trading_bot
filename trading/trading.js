@@ -43,6 +43,155 @@ const symbolLocks =
     new Map();
 
 
+// ============================================================
+// SIGNAL / ORDER FLOW STATISTICS
+// ============================================================
+
+const signalStats = {
+
+    totalSignals:
+        0,
+
+    long: {
+
+        total:
+            0,
+
+        passed:
+            0,
+
+        blocked:
+            0,
+
+        opened:
+            0
+    },
+
+    short: {
+
+        total:
+            0,
+
+        passed:
+            0,
+
+        blocked:
+            0,
+
+        opened:
+            0
+    },
+
+    totalPassed:
+        0,
+
+    totalBlocked:
+        0,
+
+    totalOpened:
+        0,
+
+    sameDirection:
+        0,
+
+    reversals:
+        0,
+
+    reversalBlocked:
+        0
+};
+
+
+function getSignalStats() {
+
+    const total =
+        signalStats.totalSignals;
+
+
+    return {
+
+        ...signalStats,
+
+        passRate:
+            total > 0
+                ? Number(
+                    (
+                        signalStats.totalPassed /
+                        total *
+                        100
+                    ).toFixed(2)
+                )
+                : 0,
+
+        blockRate:
+            total > 0
+                ? Number(
+                    (
+                        signalStats.totalBlocked /
+                        total *
+                        100
+                    ).toFixed(2)
+                )
+                : 0
+    };
+}
+
+
+function resetSignalStats() {
+
+    signalStats.totalSignals =
+        0;
+
+    signalStats.long = {
+
+        total:
+            0,
+
+        passed:
+            0,
+
+        blocked:
+            0,
+
+        opened:
+            0
+    };
+
+    signalStats.short = {
+
+        total:
+            0,
+
+        passed:
+            0,
+
+        blocked:
+            0,
+
+        opened:
+            0
+    };
+
+    signalStats.totalPassed =
+        0;
+
+    signalStats.totalBlocked =
+        0;
+
+    signalStats.totalOpened =
+        0;
+
+    signalStats.sameDirection =
+        0;
+
+    signalStats.reversals =
+        0;
+
+    signalStats.reversalBlocked =
+        0;
+}
+
+
 function sleep(ms) {
 
     return new Promise(
@@ -186,7 +335,6 @@ async function openMarketPosition(
 
             orderBook:
                 orderBookCheck
-
         };
     }
 
@@ -390,6 +538,25 @@ async function processSignal(
     }
 
 
+    // --------------------------------------------------------
+    // SIGNAL STATISTICS
+    // --------------------------------------------------------
+
+    if (
+        action === "LONG" ||
+        action === "SHORT"
+    ) {
+
+        signalStats.totalSignals++;
+
+        signalStats[
+            action === "LONG"
+                ? "long"
+                : "short"
+        ].total++;
+    }
+
+
     if (
         !TRADING_ENABLED
     ) {
@@ -410,7 +577,6 @@ async function processSignal(
             symbol,
 
             action
-
         };
     }
 
@@ -493,7 +659,6 @@ async function processSignal(
 
                     action:
                         "ALREADY_FLAT"
-
                 };
             }
 
@@ -607,6 +772,8 @@ async function processSignal(
             action
         ) {
 
+            signalStats.sameDirection++;
+
             console.log(
                 `${symbol}: already ${action}. No order.`
             );
@@ -639,6 +806,8 @@ async function processSignal(
             current.direction !== "FLAT" &&
             current.direction !== action
         ) {
+
+            signalStats.reversals++;
 
             console.log("");
             console.log(
@@ -698,6 +867,16 @@ async function processSignal(
                 openResult.blocked
             ) {
 
+                signalStats.totalBlocked++;
+
+                signalStats.reversalBlocked++;
+
+                signalStats[
+                    action === "LONG"
+                        ? "long"
+                        : "short"
+                ].blocked++;
+
                 console.log("");
                 console.log(
                     `${symbol}: REVERSAL OPEN BLOCKED BY ORDER BOOK`
@@ -727,6 +906,15 @@ async function processSignal(
             }
 
 
+            signalStats.totalPassed++;
+
+            signalStats[
+                action === "LONG"
+                    ? "long"
+                    : "short"
+            ].passed++;
+
+
             const verified =
                 await waitForPosition(
                     symbol,
@@ -740,6 +928,15 @@ async function processSignal(
                     `${symbol}: WEEX did not confirm ${action} after reversal.`
                 );
             }
+
+
+            signalStats.totalOpened++;
+
+            signalStats[
+                action === "LONG"
+                    ? "long"
+                    : "short"
+            ].opened++;
 
 
             return {
@@ -781,6 +978,14 @@ async function processSignal(
             openResult.blocked
         ) {
 
+            signalStats.totalBlocked++;
+
+            signalStats[
+                action === "LONG"
+                    ? "long"
+                    : "short"
+            ].blocked++;
+
             console.log("");
             console.log(
                 `${symbol}: ENTRY BLOCKED BY ORDER BOOK`
@@ -814,6 +1019,23 @@ async function processSignal(
                     openResult.orderBook
             };
         }
+
+
+        signalStats.totalPassed++;
+
+        signalStats[
+            action === "LONG"
+                ? "long"
+                : "short"
+        ].passed++;
+
+        signalStats.totalOpened++;
+
+        signalStats[
+            action === "LONG"
+                ? "long"
+                : "short"
+        ].opened++;
 
 
         const verified =
@@ -922,5 +1144,9 @@ module.exports = {
                 getOrderBook
             ),
 
-    getStatusConfig
+    getStatusConfig,
+
+    getSignalStats,
+
+    resetSignalStats
 };

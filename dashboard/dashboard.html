@@ -433,6 +433,67 @@
     </section>
 
 
+
+    <!-- ==================================================
+         PER-COIN ORDER FLOW
+         ================================================== -->
+
+    <section class="panel">
+
+        <div class="panel-header">
+
+            <div>
+                <div class="eyebrow">
+                    LIVE SESSION DATA
+                </div>
+
+                <h2>
+                    Per-Coin Order Flow
+                </h2>
+            </div>
+
+            <div class="table-actions">
+                <input
+                    id="coinSearch"
+                    class="coin-search"
+                    type="search"
+                    placeholder="Search coin..."
+                    autocomplete="off"
+                >
+            </div>
+
+        </div>
+
+        <div class="table-wrap">
+
+            <table class="orderflow-table">
+
+                <thead>
+                    <tr>
+                        <th>Coin</th>
+                        <th>Long ✓</th>
+                        <th>Long ✗</th>
+                        <th>Short ✓</th>
+                        <th>Short ✗</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+
+                <tbody id="orderFlowByCoin">
+                    <tr>
+                        <td colspan="6" class="table-empty">
+                            Waiting for order-flow data...
+                        </td>
+                    </tr>
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+
     <!-- ==================================================
          ORDER BOOK CONFIGURATION
          ================================================== -->
@@ -751,13 +812,242 @@
     }
 
 
+
+    let latestPerCoinStats = {};
+
+    function normalizePerCoinStats(stats) {
+
+        if (!stats || typeof stats !== "object") {
+            return {};
+        }
+
+        // Accept the most likely backend property names so the dashboard
+        // remains compatible while the bot statistics are being wired in.
+        const source =
+            stats.bySymbol ||
+            stats.perSymbol ||
+            stats.perCoin ||
+            stats.symbols ||
+            {};
+
+        if (!source || typeof source !== "object") {
+            return {};
+        }
+
+        return source;
+    }
+
+
+    function numberOrDash(value, showZero = true) {
+
+        const number = Number(value);
+
+        if (!Number.isFinite(number)) {
+            return "—";
+        }
+
+        if (!showZero && number === 0) {
+            return "—";
+        }
+
+        return String(number);
+    }
+
+
+    function getDirectionStats(row, direction) {
+
+        const value =
+            row?.[direction] ||
+            row?.[direction.toLowerCase()] ||
+            {};
+
+        return {
+            accepted: Number(
+                value.accepted ??
+                value.allowed ??
+                value.yes ??
+                0
+            ),
+            rejected: Number(
+                value.rejected ??
+                value.blocked ??
+                value.no ??
+                0
+            )
+        };
+    }
+
+
+    function renderPerCoinStatistics(stats) {
+
+        latestPerCoinStats = normalizePerCoinStats(stats);
+
+        const tbody =
+            document.getElementById(
+                "orderFlowByCoin"
+            );
+
+        if (!tbody) {
+            return;
+        }
+
+        const search =
+            (
+                document.getElementById(
+                    "coinSearch"
+                )?.value || ""
+            )
+                .trim()
+                .toUpperCase();
+
+        const entries =
+            Object.entries(
+                latestPerCoinStats
+            )
+                .map(([symbol, raw]) => {
+
+                    const row =
+                        raw && typeof raw === "object"
+                            ? raw
+                            : {};
+
+                    const long =
+                        getDirectionStats(
+                            row,
+                            "long"
+                        );
+
+                    const short =
+                        getDirectionStats(
+                            row,
+                            "short"
+                        );
+
+                    const total =
+                        long.accepted +
+                        long.rejected +
+                        short.accepted +
+                        short.rejected;
+
+                    return {
+                        symbol:
+                            String(symbol).toUpperCase(),
+                        long,
+                        short,
+                        total
+                    };
+                })
+                .filter(item =>
+                    !search ||
+                    item.symbol.includes(search)
+                )
+                .sort((a, b) => {
+
+                    // Active coins first, then alphabetical.
+                    if (b.total !== a.total) {
+                        return b.total - a.total;
+                    }
+
+                    return a.symbol.localeCompare(
+                        b.symbol
+                    );
+                });
+
+        if (!entries.length) {
+
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="table-empty">
+                        ${
+                            search
+                                ? "No matching coins."
+                                : "No order-flow checks yet."
+                        }
+                    </td>
+                </tr>
+            `;
+
+            return;
+        }
+
+        tbody.innerHTML =
+            entries
+                .map(item => {
+
+                    const longAccepted =
+                        item.long.accepted;
+
+                    const longRejected =
+                        item.long.rejected;
+
+                    const shortAccepted =
+                        item.short.accepted;
+
+                    const shortRejected =
+                        item.short.rejected;
+
+                    return `
+                        <tr>
+                            <td class="coin-name">
+                                ${item.symbol}
+                            </td>
+
+                            <td class="accepted-cell">
+                                ${
+                                    numberOrDash(
+                                        longAccepted,
+                                        longAccepted !== 0
+                                    )
+                                }
+                            </td>
+
+                            <td class="rejected-cell">
+                                ${
+                                    numberOrDash(
+                                        longRejected,
+                                        longRejected !== 0
+                                    )
+                                }
+                            </td>
+
+                            <td class="accepted-cell">
+                                ${
+                                    numberOrDash(
+                                        shortAccepted,
+                                        shortAccepted !== 0
+                                    )
+                                }
+                            </td>
+
+                            <td class="rejected-cell">
+                                ${
+                                    numberOrDash(
+                                        shortRejected,
+                                        shortRejected !== 0
+                                    )
+                                }
+                            </td>
+
+                            <td>
+                                ${item.total}
+                            </td>
+                        </tr>
+                    `;
+                })
+                .join("");
+    }
+
+
     function updateStatistics(
         stats
     ) {
 
         if (!stats) {
+            renderPerCoinStatistics({});
             return;
         }
+
+        renderPerCoinStatistics(stats);
 
 
         const total =
@@ -1322,6 +1612,21 @@
             );
         }
 
+    }
+
+
+    const coinSearch =
+        document.getElementById(
+            "coinSearch"
+        );
+
+    if (coinSearch) {
+        coinSearch.addEventListener(
+            "input",
+            () => renderPerCoinStatistics(
+                latestPerCoinStats
+            )
+        );
     }
 
 

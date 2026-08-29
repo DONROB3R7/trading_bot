@@ -1080,3 +1080,116 @@ max-width: 450px
 
 
 }
+
+
+/* ==================================================
+   PER-COIN ORDER FLOW TABLE
+   ================================================== */
+
+.table-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.coin-search {
+    width: 180px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--text);
+    font: inherit;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.coin-search::placeholder {
+    color: var(--muted);
+}
+
+.coin-search:focus {
+    border-color: var(--accent);
+}
+
+.table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.orderflow-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+}
+
+.orderflow-table th {
+    padding: 13px 16px;
+    text-align: left;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.orderflow-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.orderflow-table tbody tr {
+    transition: background 0.15s ease;
+}
+
+.orderflow-table tbody tr:hover {
+    background: var(--card-hover);
+}
+
+.orderflow-table .coin-name {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.orderflow-table .accepted-cell {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.orderflow-table .rejected-cell {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.orderflow-table td:last-child {
+    font-weight: 600;
+}
+
+.table-empty {
+    text-align: center !important;
+    color: var(--muted) !important;
+    padding: 28px 16px !important;
+}
+
+/* Mobile */
+@media (max-width: 700px) {
+
+    .panel-header {
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .coin-search {
+        width: 150px;
+    }
+
+    .orderflow-table th,
+    .orderflow-table td {
+        padding: 11px 12px;
+    }
+}

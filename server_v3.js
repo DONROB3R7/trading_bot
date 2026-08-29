@@ -33,7 +33,9 @@ const {
 const {
     processSignal,
     checkOrderBook,
-    getStatusConfig
+    getStatusConfig,
+    getOrderBookStats,
+    resetOrderBookStats
 } = require("./trading/trading");
 
 const {
@@ -134,6 +136,11 @@ console.log(
 );
 
 console.log(
+    "Statistics:",
+    "ORDER BOOK PASS / BLOCK TRACKING"
+);
+
+console.log(
     "============================================================"
 );
 
@@ -145,6 +152,7 @@ if (
 ) {
 
     console.error("");
+
     console.error(
         "WARNING: WEEX API credentials missing."
     );
@@ -460,7 +468,9 @@ async function handleManualSignal(
         );
 
 
-        if (error.data) {
+        if (
+            error.data
+        ) {
 
             console.error(
                 pretty(
@@ -682,6 +692,130 @@ app.get(
 
 
 // ============================================================
+// ORDER BOOK STATISTICS
+// ============================================================
+
+app.get(
+    "/orderbook-stats",
+    (req, res) => {
+
+        try {
+
+            const stats =
+                getOrderBookStats();
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                statistics:
+                    stats
+
+            });
+
+
+        } catch (error) {
+
+            console.error("");
+
+            console.error(
+                "ORDER BOOK STATS ERROR"
+            );
+
+            console.error(
+                error.message
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    error:
+                        error.message
+                });
+        }
+    }
+);
+
+
+// ============================================================
+// RESET ORDER BOOK STATISTICS
+// ============================================================
+
+app.post(
+    "/orderbook-stats/reset",
+    (req, res) => {
+
+        try {
+
+            const result =
+                resetOrderBookStats();
+
+
+            console.log("");
+
+            console.log(
+                "============================================================"
+            );
+
+            console.log(
+                "ORDER BOOK STATISTICS RESET"
+            );
+
+            console.log(
+                "============================================================"
+            );
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                message:
+                    "Order book statistics reset.",
+
+                statistics:
+                    result
+
+            });
+
+
+        } catch (error) {
+
+            console.error("");
+
+            console.error(
+                "ORDER BOOK STATS RESET ERROR"
+            );
+
+            console.error(
+                error.message
+            );
+
+
+            return res
+                .status(500)
+                .json({
+
+                    success:
+                        false,
+
+                    error:
+                        error.message
+                });
+        }
+    }
+);
+
+
+// ============================================================
 // SYMBOLS
 // ============================================================
 
@@ -852,6 +986,9 @@ app.get(
                     getStatusConfig()
                         .orderBook,
 
+                orderBookStatistics:
+                    getOrderBookStats(),
+
                 reversal:
                     "CLOSE -> CONFIRM FLAT -> FRESH ORDER BOOK -> OPEN",
 
@@ -997,6 +1134,9 @@ app.get(
                 getStatusConfig()
                     .orderBook,
 
+            orderBookStatistics:
+                getOrderBookStats(),
+
             reversal:
                 "CLOSE -> CONFIRM FLAT -> FRESH ORDER BOOK -> OPEN",
 
@@ -1011,6 +1151,9 @@ app.get(
 
             concurrency:
                 "Per-symbol locks",
+
+            statistics:
+                "Order book PASS / BLOCK tracking",
 
             automaticSymbolDiscovery:
                 true,
@@ -1031,6 +1174,12 @@ app.get(
 
                 testOrderBook:
                     "GET /test-orderbook?symbol=BTCUSDT&direction=LONG",
+
+                orderBookStats:
+                    "GET /orderbook-stats",
+
+                resetOrderBookStats:
+                    "POST /orderbook-stats/reset",
 
                 status:
                     "GET /status",
@@ -1077,7 +1226,7 @@ app.listen(
 
         console.log(
             "API:",
-            "WEEX V3 USDT-M Futures"
+            "WEEX V3 USDT-M FUTURES"
         );
 
         console.log(
@@ -1122,6 +1271,11 @@ app.listen(
         console.log(
             "CLOSE:",
             "NEVER FILTERED"
+        );
+
+        console.log(
+            "Statistics:",
+            "PASS / BLOCK TRACKING"
         );
 
         console.log(
@@ -1209,11 +1363,31 @@ app.listen(
             console.log("");
 
             console.log(
+                "ORDER BOOK STATISTICS:"
+            );
+
+            console.log(
+                "GET /orderbook-stats"
+            );
+
+            console.log("");
+
+            console.log(
+                "RESET STATISTICS:"
+            );
+
+            console.log(
+                "POST /orderbook-stats/reset"
+            );
+
+            console.log("");
+
+            console.log(
                 "Example PowerShell:"
             );
 
             console.log(
-                'Invoke-RestMethod -Method GET -Uri "http://localhost:3000/test-orderbook?symbol=BTCUSDT&direction=LONG"'
+                'Invoke-RestMethod -Method GET -Uri "http://localhost:3000/orderbook-stats"'
             );
 
             console.log("");
@@ -1286,7 +1460,9 @@ app.listen(
             );
 
 
-            if (error.data) {
+            if (
+                error.data
+            ) {
 
                 console.error(
                     pretty(

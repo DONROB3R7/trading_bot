@@ -64,6 +64,10 @@ const orderBookStats = {
 };
 
 
+// ============================================================
+// RECORD ORDER BOOK RESULT
+// ============================================================
+
 function recordOrderBookResult(
     symbol,
     direction,
@@ -77,17 +81,13 @@ function recordOrderBookResult(
         return;
     }
 
-
     symbol =
         normalizeSymbol(symbol);
 
-
     orderBookStats.total++;
-
 
     const side =
         direction.toLowerCase();
-
 
     orderBookStats[
         side
@@ -139,7 +139,6 @@ function recordOrderBookResult(
 
     symbolStats.total++;
 
-
     symbolStats[
         side
     ].checked++;
@@ -159,13 +158,11 @@ function recordOrderBookResult(
             side
         ].accepted++;
 
-
         symbolStats.accepted++;
 
         symbolStats[
             side
         ].accepted++;
-
 
         return;
     }
@@ -180,7 +177,6 @@ function recordOrderBookResult(
     orderBookStats[
         side
     ].rejected++;
-
 
     symbolStats.rejected++;
 
@@ -272,8 +268,7 @@ function getOrderBookStats() {
                         (
                             data.accepted /
                             data.total
-                        ) *
-                        100
+                        ) * 100
                     .toFixed(2)
                     )
                     : 0,
@@ -284,16 +279,14 @@ function getOrderBookStats() {
                         (
                             data.rejected /
                             data.total
-                        ) *
-                        100
+                        ) * 100
                     .toFixed(2)
                     )
                     : 0,
 
-            reasons:
-                {
-                    ...data.reasons
-                }
+            reasons: {
+                ...data.reasons
+            }
         };
     }
 
@@ -1024,11 +1017,19 @@ async function processSignal(
             );
 
 
+            // ------------------------------------------------
+            // CLOSE OLD POSITION FIRST
+            // ------------------------------------------------
+
             const closeResult =
                 await closePosition(
                     current
                 );
 
+
+            // ------------------------------------------------
+            // CONFIRM FLAT
+            // ------------------------------------------------
 
             const flat =
                 await waitForPosition(
@@ -1056,12 +1057,20 @@ async function processSignal(
             );
 
 
+            // ------------------------------------------------
+            // FRESH ORDER BOOK + OPEN
+            // ------------------------------------------------
+
             const openResult =
                 await openMarketPosition(
                     symbol,
                     action
                 );
 
+
+            // ------------------------------------------------
+            // REVERSAL ENTRY BLOCKED
+            // ------------------------------------------------
 
             if (
                 openResult.blocked
@@ -1096,6 +1105,10 @@ async function processSignal(
                 };
             }
 
+
+            // ------------------------------------------------
+            // CONFIRM NEW POSITION
+            // ------------------------------------------------
 
             const verified =
                 await waitForPosition(
@@ -1147,6 +1160,10 @@ async function processSignal(
             );
 
 
+        // ----------------------------------------------------
+        // ENTRY BLOCKED
+        // ----------------------------------------------------
+
         if (
             openResult.blocked
         ) {
@@ -1186,6 +1203,10 @@ async function processSignal(
             };
         }
 
+
+        // ----------------------------------------------------
+        // CONFIRM ENTRY
+        // ----------------------------------------------------
 
         const verified =
             await waitForPosition(
@@ -1306,3 +1327,4 @@ module.exports = {
 
     resetOrderBookStats
 };
+

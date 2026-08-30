@@ -15,8 +15,8 @@ const {
 // ============================================================
 
 const CONTRACT_INFO = {};
-const SUPPORTED_SYMBOLS = new Set();
 
+const SUPPORTED_SYMBOLS = new Set();
 
 // ============================================================
 // SLEEP
@@ -25,7 +25,6 @@ const SUPPORTED_SYMBOLS = new Set();
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
-
 
 // ============================================================
 // SAFE NUMBER
@@ -38,7 +37,6 @@ function safeNumber(value, fallback = 0) {
         ? number
         : fallback;
 }
-
 
 // ============================================================
 // SAFE INTEGER
@@ -58,13 +56,11 @@ function safeInteger(value, fallback) {
     return Math.floor(number);
 }
 
-
 // ============================================================
 // NORMALIZE SYMBOL
 // ============================================================
 
 function normalizeSymbol(symbol) {
-
     let value =
         String(symbol || "")
             .trim()
@@ -78,54 +74,31 @@ function normalizeSymbol(symbol) {
         value = value.split(":").pop();
     }
 
-    value =
-        value.replace(
-            /\//g,
-            ""
-        );
+    value = value.replace(/\//g, "");
 
-    value =
-        value.replace(
-            /\.P$/i,
-            ""
-        );
+    value = value.replace(/\.P$/i, "");
 
-    value =
-        value.replace(
-            /:PERP$/i,
-            ""
-        );
+    value = value.replace(/:PERP$/i, "");
 
-    value =
-        value.replace(
-            /\s+/g,
-            ""
-        );
+    value = value.replace(/\s+/g, "");
 
     return value;
 }
-
 
 // ============================================================
 // DECIMAL PLACES
 // ============================================================
 
 function decimalPlaces(value) {
+    const stringValue = String(value);
 
-    const stringValue =
-        String(value);
-
-    if (
-        stringValue.includes("e-")
-    ) {
+    if (stringValue.includes("e-")) {
         return Number(
             stringValue.split("e-")[1]
         );
     }
 
-    if (
-        stringValue.includes(".")
-    ) {
+    if (stringValue.includes(".")) {
         return (
             stringValue
                 .split(".")[1]
@@ -137,7 +110,6 @@ function decimalPlaces(value) {
     return 0;
 }
 
-
 // ============================================================
 // FLOOR TO STEP
 // ============================================================
@@ -146,7 +118,6 @@ function floorToStep(
     value,
     stepSize
 ) {
-
     if (
         !Number.isFinite(value) ||
         value <= 0
@@ -176,29 +147,23 @@ function floorToStep(
 
     const valueInt =
         Math.floor(
-            value *
-            multiplier +
+            value * multiplier +
             1e-8
         );
 
     const stepInt =
         Math.round(
-            stepSize *
-            multiplier
+            stepSize * multiplier
         );
 
-    if (
-        stepInt <= 0
-    ) {
+    if (stepInt <= 0) {
         return value;
     }
 
     const resultInt =
         Math.floor(
-            valueInt /
-            stepInt
-        ) *
-        stepInt;
+            valueInt / stepInt
+        ) * stepInt;
 
     return (
         resultInt /
@@ -206,13 +171,11 @@ function floorToStep(
     );
 }
 
-
 // ============================================================
 // CONFIGURED SYMBOL SETTINGS
 // ============================================================
 
 function getSymbolSettings(symbol) {
-
     if (
         !SUPPORTED_SYMBOLS.has(symbol)
     ) {
@@ -222,7 +185,6 @@ function getSymbolSettings(symbol) {
     }
 
     return {
-
         margin:
             DEFAULT_MARGIN,
 
@@ -230,7 +192,6 @@ function getSymbolSettings(symbol) {
             DEFAULT_LEVERAGE
     };
 }
-
 
 // ============================================================
 // HMAC SHA256 -> BASE64
@@ -243,7 +204,6 @@ function signRequest(
     queryString,
     body
 ) {
-
     let message =
         timestamp +
         method.toUpperCase() +
@@ -273,7 +233,6 @@ function signRequest(
         );
 }
 
-
 // ============================================================
 // WEEX REQUEST
 // ============================================================
@@ -283,7 +242,6 @@ async function weexRequest(
     endpoint,
     params = null
 ) {
-
     const upperMethod =
         String(method)
             .toUpperCase();
@@ -321,7 +279,6 @@ async function weexRequest(
         params &&
         Object.keys(params).length > 0
     ) {
-
         queryString =
             new URLSearchParams(
                 Object.entries(params)
@@ -341,7 +298,6 @@ async function weexRequest(
     if (
         upperMethod === "POST"
     ) {
-
         body =
             JSON.stringify(
                 params || {}
@@ -372,6 +328,7 @@ async function weexRequest(
     }
 
     console.log("");
+
     console.log(
         "------------------------------------------------------------"
     );
@@ -400,7 +357,6 @@ async function weexRequest(
     }
 
     const headers = {
-
         "Content-Type":
             "application/json",
 
@@ -411,7 +367,6 @@ async function weexRequest(
     if (
         !isPublicMarketEndpoint
     ) {
-
         headers["ACCESS-KEY"] =
             API_KEY;
 
@@ -462,8 +417,8 @@ async function weexRequest(
     if (
         !response.ok
     ) {
-
         console.error("");
+
         console.error(
             "WEEX ERROR:"
         );
@@ -499,7 +454,6 @@ async function weexRequest(
     return data;
 }
 
-
 // ============================================================
 // NORMALIZE CONTRACT
 // ============================================================
@@ -507,7 +461,6 @@ async function weexRequest(
 function normalizeContract(
     contract
 ) {
-
     const quantityPrecision =
         safeInteger(
             contract?.quantityPrecision,
@@ -568,7 +521,6 @@ function normalizeContract(
         !Number.isFinite(stepSize) ||
         stepSize <= 0
     ) {
-
         stepSize =
             Math.pow(
                 10,
@@ -577,7 +529,6 @@ function normalizeContract(
     }
 
     return {
-
         symbol:
             normalizeSymbol(
                 contract?.symbol
@@ -619,7 +570,6 @@ function normalizeContract(
     };
 }
 
-
 // ============================================================
 // GET CONTRACT
 // ============================================================
@@ -627,7 +577,6 @@ function normalizeContract(
 function getContract(
     symbol
 ) {
-
     const info =
         CONTRACT_INFO[symbol];
 
@@ -640,13 +589,11 @@ function getContract(
     return info;
 }
 
-
 // ============================================================
 // LOAD ALL WEEX CONTRACTS
 // ============================================================
 
 async function loadAllContracts() {
-
     console.log("");
 
     console.log(
@@ -686,7 +633,6 @@ async function loadAllContracts() {
         null;
 
     try {
-
         const apiTradingData =
             await weexRequest(
                 "GET",
@@ -705,18 +651,17 @@ async function loadAllContracts() {
         if (
             apiSymbols.length > 0
         ) {
-
             apiTradingSet =
                 new Set(
                     apiSymbols.map(
                         symbol =>
-                            normalizeSymbol(symbol)
+                            normalizeSymbol(
+                                symbol
+                            )
                     )
                 );
         }
-
     } catch (error) {
-
         console.warn("");
 
         console.warn(
@@ -737,7 +682,6 @@ async function loadAllContracts() {
     for (
         const contract of contracts
     ) {
-
         const symbol =
             normalizeSymbol(
                 contract?.symbol
@@ -835,7 +779,6 @@ async function loadAllContracts() {
     };
 }
 
-
 // ============================================================
 // GET PRICE
 // ============================================================
@@ -843,7 +786,6 @@ async function loadAllContracts() {
 async function getPrice(
     symbol
 ) {
-
     const data =
         await weexRequest(
             "GET",
@@ -920,7 +862,6 @@ async function getPrice(
     return price;
 }
 
-
 // ============================================================
 // GET ORDER BOOK
 // ============================================================
@@ -933,7 +874,6 @@ async function getOrderBook(
     symbol,
     limit = 15
 ) {
-
     const data =
         await weexRequest(
             "GET",
@@ -947,13 +887,11 @@ async function getOrderBook(
     return data;
 }
 
-
 // ============================================================
 // GET FUTURES BALANCE
 // ============================================================
 
 async function getFuturesBalance() {
-
     const data =
         await weexRequest(
             "GET",
@@ -1019,7 +957,6 @@ async function getFuturesBalance() {
     };
 }
 
-
 // ============================================================
 // GET CURRENT POSITION
 // ============================================================
@@ -1027,7 +964,6 @@ async function getFuturesBalance() {
 async function getCurrentPosition(
     symbol
 ) {
-
     const data =
         await weexRequest(
             "GET",
@@ -1058,13 +994,11 @@ async function getCurrentPosition(
     if (
         validPositions.length === 0
     ) {
-
         console.log(
             `${symbol}: FLAT`
         );
 
         return {
-
             symbol,
 
             direction:
@@ -1075,14 +1009,12 @@ async function getCurrentPosition(
 
             available:
                 0
-
         };
     }
 
     if (
         validPositions.length > 1
     ) {
-
         throw new Error(
             `${symbol}: multiple active positions returned.`
         );
@@ -1102,7 +1034,6 @@ async function getCurrentPosition(
         side !== "LONG" &&
         side !== "SHORT"
     ) {
-
         throw new Error(
             `${symbol}: unknown position side ${side}`
         );
@@ -1119,7 +1050,6 @@ async function getCurrentPosition(
         );
 
     const result = {
-
         symbol,
 
         direction:
@@ -1225,7 +1155,6 @@ async function getCurrentPosition(
     return result;
 }
 
-
 // ============================================================
 // GET SYMBOL CONFIG
 // ============================================================
@@ -1233,7 +1162,6 @@ async function getCurrentPosition(
 async function getSymbolConfig(
     symbol
 ) {
-
     const data =
         await weexRequest(
             "GET",
@@ -1248,22 +1176,16 @@ async function getSymbolConfig(
     if (
         Array.isArray(data)
     ) {
-
         configs =
             data;
-
     } else if (
         Array.isArray(data?.data)
     ) {
-
         configs =
             data.data;
-
     } else {
-
         configs =
             [data];
-
     }
 
     const config =
@@ -1276,7 +1198,6 @@ async function getSymbolConfig(
         configs[0];
 
     if (!config) {
-
         throw new Error(
             `WEEX symbol configuration not found for ${symbol}`
         );
@@ -1285,7 +1206,6 @@ async function getSymbolConfig(
     return config;
 }
 
-
 // ============================================================
 // NORMALIZE MARGIN MODE
 // ============================================================
@@ -1293,21 +1213,15 @@ async function getSymbolConfig(
 function normalizeMarginMode(
     config
 ) {
-
     const values = [
-
         config?.marginType,
-
         config?.marginMode,
-
         config?.marginModeType
-
     ];
 
     for (
         const value of values
     ) {
-
         if (
             value === undefined ||
             value === null
@@ -1324,21 +1238,18 @@ function normalizeMarginMode(
             normalized === "CROSS" ||
             normalized === "CROSSED"
         ) {
-
             return "CROSSED";
         }
 
         if (
             normalized === "ISOLATED"
         ) {
-
             return "ISOLATED";
         }
     }
 
     return "";
 }
-
 
 // ============================================================
 // GET CONFIGURED LEVERAGES
@@ -1347,9 +1258,7 @@ function normalizeMarginMode(
 function getConfiguredLeverages(
     config
 ) {
-
     return {
-
         cross:
             safeNumber(
                 config?.crossLeverage,
@@ -1370,7 +1279,6 @@ function getConfiguredLeverages(
     };
 }
 
-
 // ============================================================
 // ENSURE LEVERAGE
 // ============================================================
@@ -1378,7 +1286,6 @@ function getConfiguredLeverages(
 async function ensureLeverage(
     symbol
 ) {
-
     const settings =
         getSymbolSettings(
             symbol
@@ -1394,7 +1301,6 @@ async function ensureLeverage(
         settings.leverage >
         contract.maxLeverage
     ) {
-
         throw new Error(
             `${symbol}: ${settings.leverage}x exceeds WEEX maximum leverage ` +
             `${contract.maxLeverage}x`
@@ -1415,7 +1321,6 @@ async function ensureLeverage(
         marginMode !==
         REQUIRED_MARGIN_MODE
     ) {
-
         throw new Error(
             `${symbol}: WEEX margin mode is ` +
             `${marginMode || "UNKNOWN"}, expected ` +
@@ -1443,13 +1348,11 @@ async function ensureLeverage(
         current.isolatedShort ===
             settings.leverage
     ) {
-
         console.log(
             `${symbol}: leverage already ${settings.leverage}x`
         );
 
         return {
-
             changed:
                 false,
 
@@ -1465,7 +1368,6 @@ async function ensureLeverage(
             "POST",
             "/capi/v3/account/leverage",
             {
-
                 symbol,
 
                 marginType:
@@ -1498,7 +1400,6 @@ async function ensureLeverage(
     );
 
     return {
-
         changed:
             true,
 
@@ -1510,7 +1411,6 @@ async function ensureLeverage(
     };
 }
 
-
 // ============================================================
 // FORMAT QUANTITY
 // ============================================================
@@ -1519,7 +1419,6 @@ function formatQuantity(
     symbol,
     quantity
 ) {
-
     const contract =
         getContract(
             symbol
@@ -1535,7 +1434,6 @@ function formatQuantity(
         !Number.isFinite(adjusted) ||
         adjusted <= 0
     ) {
-
         throw new Error(
             `${symbol}: invalid order quantity ${adjusted}`
         );
@@ -1557,7 +1455,6 @@ function formatQuantity(
     );
 }
 
-
 // ============================================================
 // CALCULATE POSITION
 // ============================================================
@@ -1566,7 +1463,6 @@ function calculatePosition(
     symbol,
     price
 ) {
-
     const settings =
         getSymbolSettings(
             symbol
@@ -1581,7 +1477,6 @@ function calculatePosition(
         !Number.isFinite(price) ||
         price <= 0
     ) {
-
         throw new Error(
             `${symbol}: invalid price ${price}`
         );
@@ -1604,7 +1499,6 @@ function calculatePosition(
     if (
         quantity <= 0
     ) {
-
         throw new Error(
             `${symbol}: calculated quantity is zero.`
         );
@@ -1615,7 +1509,6 @@ function calculatePosition(
         quantity <
         contract.minOrderSize
     ) {
-
         throw new Error(
             `${symbol}: quantity ${quantity} ` +
             `is below WEEX minimum ${contract.minOrderSize}`
@@ -1629,7 +1522,6 @@ function calculatePosition(
         quantity >
         contract.maxOrderSize
     ) {
-
         throw new Error(
             `${symbol}: quantity ${quantity} ` +
             `exceeds WEEX maximum ${contract.maxOrderSize}`
@@ -1644,7 +1536,6 @@ function calculatePosition(
         quantity >
         contract.marketOpenLimitSize
     ) {
-
         throw new Error(
             `${symbol}: quantity ${quantity} ` +
             `exceeds market-open limit ` +
@@ -1661,7 +1552,6 @@ function calculatePosition(
         settings.leverage;
 
     return {
-
         margin:
             settings.margin,
 
@@ -1683,7 +1573,6 @@ function calculatePosition(
     };
 }
 
-
 // ============================================================
 // PRINT POSITION CALCULATION
 // ============================================================
@@ -1693,7 +1582,6 @@ function printPosition(
     price,
     calculation
 ) {
-
     console.log("");
 
     console.log(
@@ -1763,7 +1651,6 @@ function printPosition(
     );
 }
 
-
 // ============================================================
 // STEP SIZE FROM WEEX ERROR
 // ============================================================
@@ -1771,7 +1658,6 @@ function printPosition(
 function extractStepSizeFromError(
     error
 ) {
-
     const text =
         JSON.stringify(
             error?.data ||
@@ -1796,13 +1682,11 @@ function extractStepSizeFromError(
         !Number.isFinite(step) ||
         step <= 0
     ) {
-
         return null;
     }
 
     return step;
 }
-
 
 // ============================================================
 // BUILD OPEN ORDER
@@ -1814,9 +1698,7 @@ function buildOpenOrder(
     quantity,
     clientOrderId
 ) {
-
     return {
-
         symbol,
 
         side:
@@ -1837,7 +1719,6 @@ function buildOpenOrder(
     };
 }
 
-
 // ============================================================
 // PLACE OPEN ORDER
 // ============================================================
@@ -1847,7 +1728,6 @@ async function placeOpenOrder(
     direction,
     calculation
 ) {
-
     const clientOrderId =
         `TV_${symbol}_${direction}_${Date.now()}`;
 
@@ -1866,15 +1746,12 @@ async function placeOpenOrder(
         );
 
     try {
-
         return await weexRequest(
             "POST",
             "/capi/v3/order",
             order
         );
-
     } catch (error) {
-
         const step =
             extractStepSizeFromError(
                 error
@@ -1931,7 +1808,6 @@ async function placeOpenOrder(
     }
 }
 
-
 // ============================================================
 // BUILD CLOSE ORDER
 // ============================================================
@@ -1942,9 +1818,7 @@ function buildCloseOrder(
     quantity,
     clientOrderId
 ) {
-
     return {
-
         symbol,
 
         side:
@@ -1968,7 +1842,6 @@ function buildCloseOrder(
     };
 }
 
-
 // ============================================================
 // CLOSE POSITION
 // ============================================================
@@ -1976,15 +1849,12 @@ function buildCloseOrder(
 async function closePosition(
     position
 ) {
-
     if (
         !position ||
         position.direction === "FLAT" ||
         position.quantity <= 0
     ) {
-
         return {
-
             success:
                 true,
 
@@ -2045,7 +1915,6 @@ async function closePosition(
     );
 
     try {
-
         const result =
             await weexRequest(
                 "POST",
@@ -2068,15 +1937,12 @@ async function closePosition(
         );
 
         return {
-
             success:
                 true,
 
             result
         };
-
     } catch (error) {
-
         const step =
             extractStepSizeFromError(
                 error
@@ -2117,7 +1983,6 @@ async function closePosition(
             );
 
         return {
-
             success:
                 true,
 
@@ -2125,7 +1990,6 @@ async function closePosition(
         };
     }
 }
-
 
 // ============================================================
 // WAIT FOR POSITION
@@ -2136,13 +2000,11 @@ async function waitForPosition(
     expectedDirection,
     maxAttempts = 20
 ) {
-
     for (
         let attempt = 1;
         attempt <= maxAttempts;
         attempt++
     ) {
-
         await sleep(500);
 
         const position =
@@ -2153,26 +2015,21 @@ async function waitForPosition(
         if (
             expectedDirection === "FLAT"
         ) {
-
             if (
                 position.direction ===
                 "FLAT"
             ) {
-
                 console.log(
                     `${symbol}: confirmed FLAT`
                 );
 
                 return true;
             }
-
         } else {
-
             if (
                 position.direction ===
                 expectedDirection
             ) {
-
                 console.log(
                     `${symbol}: confirmed ${expectedDirection}`
                 );
@@ -2190,7 +2047,6 @@ async function waitForPosition(
     return false;
 }
 
-
 // ============================================================
 // EXPORTS
 // ============================================================
@@ -2203,7 +2059,6 @@ async function waitForPosition(
 // ============================================================
 
 module.exports = {
-
     CONTRACT_INFO,
 
     SUPPORTED_SYMBOLS,

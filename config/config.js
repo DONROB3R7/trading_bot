@@ -13,10 +13,10 @@ const REQUIRED_MARGIN_MODE = "ISOLATED";
 // ORDER BOOK
 // ============================================================
 
-const ORDER_BOOK_DEPTH = 15;
+const ORDER_BOOK_DEPTH = 200;
 
-const LONG_MIN_IMBALANCE = 0.03;
-const SHORT_MAX_IMBALANCE = -0.03;
+const LONG_MIN_IMBALANCE = 0.01;
+const SHORT_MAX_IMBALANCE = -0.01;
 
 const MIN_BID_ASK_RATIO = 1.05;
 const MIN_ASK_BID_RATIO = 1.05;

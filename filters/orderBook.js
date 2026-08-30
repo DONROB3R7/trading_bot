@@ -1,86 +1,98 @@
 // ============================================================
-// WEEX ORDER BOOK FILTER - EASY SETTINGS
+// WEEX ORDER BOOK FILTER
 // ============================================================
 //
-// Change ONLY these settings when testing.
 //
-// ------------------------------------------------------------
-// ORDER_BOOK_FILTER_ENABLED
-// ------------------------------------------------------------
+// EASY SETTINGS ARE AT THE TOP.
 //
-// true  = Order book filter is ACTIVE
-// false = Order book filter is COMPLETELY BYPASSED
-//
-// ------------------------------------------------------------
-// IMBALANCE PRESETS
-// ------------------------------------------------------------
-//
-// VERY LIGHT
-// LONG  >= +0.10
-// SHORT <= -0.10
-//
-// LIGHT  ⭐ CURRENT
-// LONG  >= +0.15
-// SHORT <= -0.15
-//
-// NORMAL
-// LONG  >= +0.20
-// SHORT <= -0.20
-//
-// RESTRICTIVE
-// LONG  >= +0.25
-// SHORT <= -0.25
-//
-// VERY RESTRICTIVE
-// LONG  >= +0.30
-// SHORT <= -0.30
+// Change ONLY the CONST SETTINGS section when testing.
 //
 // ============================================================
 
 
 // ============================================================
-// EASY FILTER SWITCH
+// CONST SETTINGS - EASY TO CHANGE
 // ============================================================
 
+// ------------------------------------------------------------
+// ORDER BOOK FILTER
+// ------------------------------------------------------------
+//
+// true  = filter ACTIVE
+// false = filter completely BYPASSED
+//
 const ORDER_BOOK_FILTER_ENABLED = true;
 
 
-// ============================================================
-// EASY IMBALANCE SETTINGS
-// ============================================================
+// ------------------------------------------------------------
+// ORDER BOOK DEPTH
+// ------------------------------------------------------------
 //
-// CURRENT SETTING:
-// LIGHT = +0.15 / -0.15
+// Number of order-book levels used.
 //
-// Change these two numbers directly:
+// 50  = faster / more local
+// 100 = medium
+// 200 = deeper
 //
-// LONG  -> positive value
-// SHORT -> negative value
-//
-// ============================================================
-
-const LONG_MIN_IMBALANCE = 0.15;
-const SHORT_MAX_IMBALANCE = -0.15;
+const ORDER_BOOK_DEPTH = 200;
 
 
-// ============================================================
-// IMPORT CONFIG
-// ============================================================
+// ------------------------------------------------------------
+// IMBALANCE
+// ------------------------------------------------------------
 //
-// We still use config.js for:
-// - ORDER_BOOK_DEPTH
-// - MIN_BID_ASK_RATIO
-// - MIN_ASK_BID_RATIO
+// LONG:
+// Trade is allowed when imbalance >= LONG_MIN_IMBALANCE
 //
-// The imbalance values above are controlled directly here.
+// SHORT:
+// Trade is allowed when imbalance <= SHORT_MAX_IMBALANCE
 //
-// ============================================================
+// Examples:
+//
+// VERY LIGHT
+// LONG  = +0.01
+// SHORT = -0.01
+//
+// LIGHT
+// LONG  = +0.05
+// SHORT = -0.05
+//
+// NORMAL
+// LONG  = +0.10
+// SHORT = -0.10
+//
+// STRONG
+// LONG  = +0.15
+// SHORT = -0.15
+//
+// RESTRICTIVE
+// LONG  = +0.20
+// SHORT = -0.20
+//
+// VERY RESTRICTIVE
+// LONG  = +0.30
+// SHORT = -0.30
+//
+const LONG_MIN_IMBALANCE = 0.01;
+const SHORT_MAX_IMBALANCE = -0.01;
 
-const {
-    ORDER_BOOK_DEPTH,
-    MIN_BID_ASK_RATIO,
-    MIN_ASK_BID_RATIO
-} = require("../config/config");
+
+// ------------------------------------------------------------
+// BID / ASK RATIOS
+// ------------------------------------------------------------
+//
+// IMPORTANT:
+//
+// Ratios are MONITORED only.
+//
+// They DO NOT block trades.
+//
+// They are returned in the result and shown in the logs.
+//
+// ------------------------------------------------------------
+
+const MIN_BID_ASK_RATIO = 1.05;
+const MIN_ASK_BID_RATIO = 1.05;
 
 
 // ============================================================
@@ -187,14 +199,16 @@ function calculateOrderBookPressure(orderBook) {
     // IMBALANCE
     // ========================================================
     //
+    // Formula:
+    //
+    // (BID - ASK) / (BID + ASK)
+    //
     // Positive = more bid liquidity
     // Negative = more ask liquidity
     //
-    // Example:
-    //
-    // +0.15 = moderate LONG pressure
+    // +0.10 = 10% bid-side advantage
     //  0.00 = balanced
-    // -0.15 = moderate SHORT pressure
+    // -0.10 = 10% ask-side advantage
     //
     // ========================================================
 
@@ -245,8 +259,8 @@ function calculateOrderBookPressure(orderBook) {
 //
 // getOrderBook is passed into this function.
 //
-// This prevents orderBook.js from importing weex.js,
-// which removes the circular dependency.
+// This keeps the order-book module independent from the WEEX
+// request module and avoids circular dependencies.
 //
 // ============================================================
 
@@ -291,15 +305,15 @@ async function checkOrderBook(
     // FILTER DISABLED
     // ========================================================
     //
-    // If false:
+    // If disabled:
     //
     // TradingView signal
     //        ↓
-    // ORDER BOOK BYPASSED
+    // Order book bypassed
     //        ↓
-    // TRADE ALLOWED
+    // Trade allowed
     //
-    // This is useful for A/B testing.
+    // Useful for A/B testing.
     //
     // ========================================================
 
@@ -563,13 +577,9 @@ async function checkOrderBook(
         // RATIO CHECK
         // ====================================================
         //
-        // IMPORTANT:
-        //
-        // Ratio is ONLY monitored.
+        // Ratio is monitored only.
         //
         // It does NOT block the trade.
-        //
-        // This keeps the order-book filter LIGHT.
         //
         // ====================================================
 
@@ -582,7 +592,7 @@ async function checkOrderBook(
         // FINAL DECISION
         // ====================================================
         //
-        // ONLY imbalance can block LONG.
+        // ONLY imbalance blocks LONG.
         //
         // ====================================================
 
@@ -694,7 +704,7 @@ async function checkOrderBook(
     // RATIO CHECK
     // ========================================================
     //
-    // Ratio is ONLY monitored.
+    // Ratio is monitored only.
     //
     // It does NOT block the trade.
     //
@@ -709,7 +719,7 @@ async function checkOrderBook(
     // FINAL DECISION
     // ========================================================
     //
-    // ONLY imbalance can block SHORT.
+    // ONLY imbalance blocks SHORT.
     //
     // ========================================================
 

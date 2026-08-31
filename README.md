@@ -1,12 +1,22 @@
-# TradingView -> WEEX Bot V3
+# TradingView → WEEX Bot V3
 
-## Current Project State
+**Status:** Active Development
+**Version:** SERVER V3
+**Last Updated:** 2026-08-31
+**Main Entry Point:** `server_v3.js`
+**Execution Exchange:** WEEX V3 USDT-M Futures
+**Position Source of Truth:** Live WEEX account position
+**Order-Book Source:** WEEX REST market depth via `weex.js`
 
-This project receives TradingView webhook signals and executes LONG/SHORT/CLOSE actions on WEEX V3 USDT-M futures.
+---
 
-The current architecture is intentionally split into a small number of modules:
+# 1. Project Overview
 
-```text
+This project receives trading signals from a TradingView Pine strategy through webhooks and executes them on WEEX V3 USDT-M futures.
+
+The system is intentionally split into a small number of modules:
+
+
 TradingView Pine Strategy
         |
         | LONG / SHORT / CLOSE webhook
@@ -25,76 +35,116 @@ weex/weex.js
 WEEX V3 USDT-M Futures
 ```
 
-`server_v3.js` is the main application entry point.
+The core design principle is:
 
-The bot uses the real WEEX account/position state as the source of truth. It does not depend on a local position-memory variable for execution decisions.
+```text
+TradingView = SIGNAL GENERATOR
+
+WEEX BOT = EXECUTION + SAFETY LAYER
+```
+
+TradingView determines the trading direction.
+
+The WEEX bot is responsible for:
+
+* validating the signal;
+* checking the real exchange position;
+* filtering new entries using order-book data;
+* calculating position size;
+* checking margin/leverage configuration;
+* executing orders;
+* confirming the resulting exchange position;
+* safely handling reversals;
+* preventing duplicate/racing operations.
+
+The bot does **not** use local position memory as the final source of truth.
+
+The actual WEEX account position is always authoritative.
 
 ---
 
-# Project Structure
+# 2. Project Structure
 
 ```text
 toobit-bot/
 |
-├── server_v3.js              # Main Express server / TradingView webhook receiver
+├── server_v3.js
+│   └── Main Express server / TradingView webhook receiver
 |
 ├── config/
-│   └── config.js             # Central configuration and environment variables
+│   └── config.js
+│       └── Central configuration and environment variables
 |
 ├── weex/
-│   └── weex.js               # All direct WEEX API communication and execution
+│   └── weex.js
+│       └── WEEX API communication and execution
 |
 ├── filters/
-│   └── orderBook.js          # Order-book analysis and entry filter only
+│   └── orderBook.js
+│       └── Order-book analysis and entry filtering
 |
 ├── trading/
-│   └── trading.js            # Signal processing, position logic, reversals, statistics
+│   └── trading.js
+│       └── Signal processing, position logic and statistics
 |
 ├── utils/
-│   └── logger.js             # Console/log helpers
+│   └── logger.js
+│       └── Console/log helpers
 |
-├── .env                      # API credentials and runtime configuration
-└── README.md                 # This document
+├── .env
+│   └── API credentials and runtime configuration
+|
+└── README.md
+    └── Project documentation
 ```
 
-Keep the architecture simple. Do not split `weex.js` or `trading.js` into many files unless there is a real maintenance or technical reason.
+The architecture should remain simple.
+
+Do not split `weex.js` or `trading.js` into many additional files unless there is a real technical or maintenance reason.
 
 ---
 
-# 1. server_v3.js
+# 3. server_v3.js
 
 ## Role
 
-`server_v3.js` is the main HTTP application.
+`server_v3.js` is the main HTTP application and entry point.
 
 It is responsible for:
 
-- Starting Express.
-- Loading configuration.
-- Receiving TradingView webhooks.
-- Normalizing symbols and actions.
-- Validating incoming signals.
-- Sending an immediate HTTP 200 acknowledgement.
-- Passing valid signals to `trading/trading.js` for background processing.
-- Exposing status, position, symbol, manual and read-only testing endpoints.
-- Loading all available WEEX USDT-M contracts at startup.
+* starting Express;
+* loading configuration;
+* receiving TradingView webhooks;
+* normalizing incoming symbols/actions;
+* validating incoming signals;
+* returning an immediate HTTP `200`;
+* passing valid signals to `trading.js`;
+* exposing status endpoints;
+* exposing position endpoints;
+* exposing symbol information;
+* exposing manual trading endpoints;
+* exposing read-only order-book testing;
+* loading available WEEX USDT-M contracts at startup.
 
-## Important rule
+## Architecture Rule
 
-`server_v3.js` should stay thin.
+`server_v3.js` must stay thin.
 
-It should NOT contain:
+It should **not** contain:
 
-- detailed WEEX order placement logic;
-- quantity calculation logic;
-- HMAC/API implementation;
-- order-book calculation logic.
+* detailed WEEX order placement logic;
+* quantity calculation logic;
+* HMAC/API signing implementation;
+* order-book calculation logic;
+* detailed reversal logic.
 
-Those responsibilities belong in `weex.js` and `orderBook.js`.
+Those responsibilities belong to the appropriate modules.
 
-## Webhook behavior
+---
 
-The intended flow is:
+# 4. TradingView Webhook Flow
+
+The intended webhook flow is:
 
 ```text
 TradingView
@@ -102,97 +152,156 @@ TradingView
     v
 POST /webhook
     |
-    +----> immediate HTTP 200
+    +----> Immediate HTTP 200
     |
     v
-background processing
+Background processing
     |
     v
 trading.js
+    |
+    v
+WEEX
 ```
 
-This prevents slow WEEX API calls from unnecessarily delaying TradingView's webhook acknowledgement.
+The webhook acknowledgement should happen quickly.
+
+Slow WEEX requests must not unnecessarily delay TradingView's HTTP response.
+
+This is an important part of the V3 architecture.
 
 ---
 
-# 2. config/config.js
+# 5. Supported TradingView Actions
+
+The bot supports the following trading actions:
+
+```text
+LONG
+SHORT
+CLOSE
+CLOSE_LONG
+CLOSE_SHORT
+```
+
+The direction is generated by TradingView.
+
+The WEEX bot does not attempt to replace the TradingView strategy.
+
+---
+
+# 6. config/config.js
 
 ## Role
 
 `config/config.js` is the central configuration layer.
 
-The current trading/execution code reads these important values:
+Important configuration values include:
 
 ```text
 TRADING_ENABLED
+
 DEFAULT_MARGIN
 DEFAULT_LEVERAGE
 REQUIRED_MARGIN_MODE
+
 ORDER_BOOK_DEPTH
+
 LONG_MIN_IMBALANCE
 SHORT_MAX_IMBALANCE
+
 MIN_BID_ASK_RATIO
 MIN_ASK_BID_RATIO
 ```
 
-WEEX API credentials are loaded from environment configuration.
-
-## Risk model
-
-Position size is calculated from:
-
-```text
-Target notional = DEFAULT_MARGIN × DEFAULT_LEVERAGE
-Quantity        = Target notional / current price
-```
-
-The exact values are controlled by `config/config.js` / `.env` and should not be assumed from an old README entry.
-
-The currently documented execution model is:
-
-```text
-Margin mode: ISOLATED
-Leverage:    configured in config
-Margin:      configured in config
-```
-
-Before changing risk settings, treat the change as a trading-strategy/risk change, not merely a coding change.
+WEEX API credentials are loaded through environment configuration.
 
 ---
 
-# 3. weex/weex.js
+# 7. Risk Model
+
+The position-sizing model is:
+
+```text
+Target Notional
+    =
+DEFAULT_MARGIN × DEFAULT_LEVERAGE
+```
+
+Then:
+
+```text
+Raw Quantity
+    =
+Target Notional / Current Price
+```
+
+The final quantity is adjusted according to the WEEX contract's step size and trading limits.
+
+The exact margin and leverage values are controlled by the current configuration.
+
+Do not assume old values from previous versions of this README.
+
+Current execution configuration is:
+
+```text
+Margin Mode = ISOLATED
+Leverage    = configured value
+Margin      = configured value
+```
+
+Changing the following values is considered an explicit trading-risk change:
+
+```text
+DEFAULT_MARGIN
+DEFAULT_LEVERAGE
+REQUIRED_MARGIN_MODE
+```
+
+They must not be changed silently during unrelated code modifications.
+
+---
+
+# 8. weex/weex.js
 
 ## Role
 
-`weex/weex.js` contains ALL direct communication with WEEX.
+`weex/weex.js` contains all direct communication with WEEX.
 
-It is the single module that knows how to authenticate and execute WEEX V3 API requests.
+It is the only module that should need detailed knowledge of the WEEX API implementation.
 
-Current responsibilities include:
+Responsibilities include:
 
-- HMAC SHA256 request signing.
-- Base64 signatures.
-- Public market requests.
-- Authenticated account requests.
-- Symbol normalization.
-- Automatic contract discovery.
-- Contract information cache.
-- Price/ticker lookup.
-- REST order-book retrieval.
-- Futures balance lookup.
-- Current position lookup.
-- Symbol configuration lookup.
-- Margin-mode verification.
-- Leverage verification/update.
-- Quantity calculation.
-- Quantity step-size handling.
-- Market opening orders.
-- Market closing orders.
-- Position verification/waiting.
+* HMAC SHA256 request signing;
+* Base64 signatures;
+* public market requests;
+* authenticated account requests;
+* symbol normalization;
+* contract discovery;
+* contract information caching;
+* ticker/price lookup;
+* order-book retrieval;
+* futures balance lookup;
+* live position lookup;
+* symbol configuration lookup;
+* margin-mode verification;
+* leverage verification/update;
+* quantity calculation;
+* quantity step-size handling;
+* market opening orders;
+* market closing orders;
+* position verification;
+* waiting for exchange state changes.
 
-## WEEX API authentication
+API communication must remain centralized here.
 
-Authenticated requests use:
+Do not move WEEX authentication or order placement into `trading.js` or `server_v3.js`.
+
+---
+
+# 9. WEEX API Authentication
+
+Authenticated requests use the WEEX API credentials:
 
 ```text
 ACCESS-KEY
@@ -201,17 +310,40 @@ ACCESS-PASSPHRASE
 ACCESS-TIMESTAMP
 ```
 
-The signature is generated from timestamp, HTTP method, request path, query string and POST body according to the implementation in `weex.js`.
+The signature is generated from the request information according to the implementation in `weex.js`.
 
-Do not move API signing into `trading.js` or `server_v3.js`.
+The signing implementation must remain inside `weex.js`.
+
+API credentials must never be hard-coded into source files.
 
 ---
 
-# 4. Automatic contract discovery
+# 10. Environment Variables
 
-At startup the bot calls WEEX market contract information and builds an in-memory supported-symbol set.
+Sensitive credentials are loaded through `.env` / environment configuration.
 
-The current discovery process:
+Typical credentials include:
+
+```text
+API_KEY
+API_SECRET
+API_PASSPHRASE
+```
+
+Never:
+
+* commit real API credentials to GitHub;
+* put API keys directly into JavaScript;
+* paste real credentials into public logs;
+* include secrets in this README.
+
+---
+
+# 11. Automatic Contract Discovery
+
+The bot automatically discovers available WEEX USDT-M contracts.
+
+The startup process is:
 
 ```text
 WEEX exchangeInfo
@@ -220,23 +352,25 @@ WEEX exchangeInfo
 USDT quote/margin contracts
        |
        v
-optional apiTradingSymbols validation
+Optional apiTradingSymbols validation
        |
        v
-SUPPORTED_SYMBOLS + CONTRACT_INFO
+SUPPORTED_SYMBOLS
+       +
+CONTRACT_INFO
 ```
 
-This means the bot does not need a manually maintained list of every WEEX coin.
+This means the bot does not need a manually maintained list of every supported WEEX coin.
 
-A symbol must be discovered and available before normal trading functions accept it.
+A symbol must be discovered and available before normal trading operations can use it.
 
-Do not replace automatic discovery with a hard-coded coin list unless explicitly requested.
+Do not replace automatic contract discovery with a hard-coded coin list unless explicitly requested.
 
 ---
 
-# 5. Symbol normalization
+# 12. Symbol Normalization
 
-TradingView may send symbols such as:
+TradingView may send symbols in formats such as:
 
 ```text
 SPXUSDT.P
@@ -244,7 +378,7 @@ FARTCOINUSDT.P
 BINANCE:BTCUSDT.P
 ```
 
-The bot normalizes these into the WEEX symbol format, for example:
+The bot normalizes these into the WEEX-compatible format:
 
 ```text
 SPXUSDT
@@ -252,31 +386,39 @@ FARTCOINUSDT
 BTCUSDT
 ```
 
-Normalization is handled by `weex.js` and reused by the trading controller.
+Symbol normalization is handled by `weex.js` and reused by the trading controller.
 
-This is important because TradingView symbols and WEEX symbols do not always use exactly the same notation.
+This is important because TradingView and WEEX do not always use identical symbol notation.
 
 ---
 
-# 6. Quantity calculation
+# 13. Quantity Calculation
 
-The current position-sizing logic is:
+Position sizing follows this general process:
 
 ```text
-Target notional = configured margin × configured leverage
-Raw quantity    = target notional / current price
-Final quantity  = raw quantity floored to WEEX step size
+Target Notional
+    =
+Configured Margin × Configured Leverage
+
+Raw Quantity
+    =
+Target Notional / Current Price
+
+Final Quantity
+    =
+Raw Quantity adjusted/floored to WEEX step size
 ```
 
 The calculation also checks:
 
-- minimum order size;
-- maximum order size;
-- maximum market-open size;
-- valid price;
-- valid step size.
+* minimum order size;
+* maximum order size;
+* maximum market-open size;
+* valid price;
+* valid step size.
 
-The result includes:
+The resulting calculation contains information such as:
 
 ```text
 margin
@@ -289,84 +431,113 @@ actualMargin
 stepSize
 ```
 
+The exact calculation must follow the current `weex.js` implementation and current WEEX contract information.
+
 ---
 
-# 7. WEEX step-size retry
+# 14. WEEX Step-Size Retry
 
-The bot intentionally has a retry mechanism for quantity step-size errors.
+The bot intentionally includes a retry mechanism for quantity step-size errors.
 
-Some contracts can report a real required `stepSize` through a rejected-order response even when the cached contract information does not match it.
+Some contracts may report a different required `stepSize` when an order is rejected.
 
-Current behavior:
+The intended behavior is:
 
 ```text
-First order attempt
-       |
-       v
-WEEX rejects because of stepSize
-       |
-       v
+First Order Attempt
+        |
+        v
+WEEX rejects due to stepSize
+        |
+        v
 Extract stepSize from WEEX error
-       |
-       v
+        |
+        v
 Update CONTRACT_INFO[symbol]
-       |
-       v
-Recalculate/format quantity
-       |
-       v
+        |
+        v
+Recalculate quantity
+        |
+        v
 Retry once
 ```
 
-Do not remove this retry without a strong reason.
+This retry is important because cached contract information can occasionally differ from the value returned by WEEX during order validation.
+
+Do not remove this retry without a strong technical reason.
 
 ---
 
-# 8. Margin mode and leverage
+# 15. Margin Mode and Leverage
 
-Before opening a position, `ensureLeverage()`:
+Before opening a position, the bot verifies the required trading configuration.
 
-1. Reads the configured symbol settings.
-2. Checks the WEEX maximum leverage when available.
-3. Reads the current WEEX symbol configuration.
-4. Verifies that the account is using the required margin mode.
-5. Verifies configured isolated LONG/SHORT leverage.
-6. Updates leverage when necessary.
+`ensureLeverage()` is responsible for checking the relevant WEEX settings.
 
-The bot does NOT silently convert CROSS to ISOLATED.
+The general process is:
 
-If the account is in the wrong margin mode, the operation fails and the account setting must be corrected.
+```text
+1. Read configured symbol settings.
+
+2. Check maximum leverage when available.
+
+3. Read current WEEX symbol configuration.
+
+4. Verify required margin mode.
+
+5. Verify LONG leverage.
+
+6. Verify SHORT leverage.
+
+7. Update leverage if required.
+```
+
+The bot requires the configured margin mode.
+
+It does **not** silently convert an incorrect account mode.
+
+For example:
+
+```text
+Required = ISOLATED
+Current  = CROSS
+```
+
+The operation must fail rather than silently changing the account mode.
 
 ---
 
-# 9. filters/orderBook.js
+# 16. filters/orderBook.js
 
 ## Role
 
-This module contains ONLY order-book analysis/filtering.
+`filters/orderBook.js` contains the order-book analysis/filtering logic.
 
-It must NOT:
-
-- place orders;
-- close positions;
-- calculate position size;
-- decide the TradingView signal direction.
-
-TradingView decides whether the requested action is LONG or SHORT.
-
-The order-book filter only answers:
+It must remain focused on answering one question:
 
 ```text
-Does the current WEEX order book support this requested direction?
+Does the current WEEX order book support the requested entry direction?
 ```
 
-## Current data source
+It must **not**:
 
-The current `trading.js` integration calls `checkOrderBook()` with the `getOrderBook()` function from `weex.js`.
+* place orders;
+* close positions;
+* calculate position size;
+* determine the TradingView signal;
+* perform reversal logic.
 
-`weex.js` retrieves the live order book through the WEEX REST market-depth endpoint.
+TradingView determines whether the requested action is LONG or SHORT.
 
-Current execution path:
+The order-book filter only decides whether the current market depth supports that requested direction.
+
+---
+
+# 17. Current Order-Book Data Source
+
+The current execution path uses the WEEX REST market-depth endpoint.
+
+The current architecture is:
 
 ```text
 TradingView LONG/SHORT
@@ -381,36 +552,41 @@ checkOrderBook()
 weex.getOrderBook()
         |
         v
-WEEX market/depth
+WEEX REST market/depth
 ```
 
-Do not document the old WebSocket order-book implementation as the current execution path unless that implementation is actually restored.
+The order-book check uses a fresh market-depth request when an entry is evaluated.
+
+Do not describe an old WebSocket implementation as the active execution path unless it is actually restored in the code.
 
 ---
 
-# 10. Current order-book calculation
+# 18. Order-Book Calculation
 
-The current filter reads bid and ask levels from the WEEX depth response.
+The order-book filter reads bid and ask levels from WEEX depth data.
 
 It calculates:
 
 ```text
-Bid liquidity
-Ask liquidity
-Total liquidity
-Bid percentage
-Ask percentage
+Bid Liquidity
+Ask Liquidity
+Total Liquidity
+
+Bid Percentage
+Ask Percentage
+
 Imbalance
-Bid/Ask ratio
-Ask/Bid ratio
+
+Bid/Ask Ratio
+Ask/Bid Ratio
 ```
 
 The imbalance formula is:
 
 ```text
-                  bidLiquidity - askLiquidity
-Imbalance = -------------------------------------------
-                  bidLiquidity + askLiquidity
+                 Bid Liquidity - Ask Liquidity
+Imbalance = -----------------------------------------
+                 Bid Liquidity + Ask Liquidity
 ```
 
 Interpretation:
@@ -421,97 +597,112 @@ Interpretation:
 -1  = extreme ask dominance
 ```
 
-The filter therefore treats positive imbalance as bid pressure and negative imbalance as ask pressure.
+Therefore:
+
+```text
+Positive imbalance = bid pressure
+
+Negative imbalance = ask pressure
+```
 
 ---
 
-# 11. LONG order-book filter
+# 19. LONG Order-Book Filter
 
-For a LONG signal, the current implementation checks:
+For a LONG signal, both conditions must pass:
 
 ```text
 imbalance >= LONG_MIN_IMBALANCE
+
 AND
+
 bidAskRatio >= MIN_BID_ASK_RATIO
 ```
 
-When both conditions pass:
+If both pass:
 
 ```text
 ORDER_BOOK_SUPPORTS_LONG
 ```
 
-Otherwise:
+If either condition fails:
 
 ```text
 ORDER_BOOK_DOES_NOT_SUPPORT_LONG
 ```
 
-The returned result also contains the raw measurements and individual pass/fail values.
+The returned filter result should also contain the relevant raw measurements and individual pass/fail information.
 
 ---
 
-# 12. SHORT order-book filter
+# 20. SHORT Order-Book Filter
 
-For a SHORT signal, the current implementation checks:
+For a SHORT signal, both conditions must pass:
 
 ```text
 imbalance <= SHORT_MAX_IMBALANCE
+
 AND
+
 askBidRatio >= MIN_ASK_BID_RATIO
 ```
 
-When both conditions pass:
+If both pass:
 
 ```text
 ORDER_BOOK_SUPPORTS_SHORT
 ```
 
-Otherwise:
+If either condition fails:
 
 ```text
 ORDER_BOOK_DOES_NOT_SUPPORT_SHORT
 ```
 
+The returned result should contain the relevant measurements and pass/fail information.
+
 ---
 
-# 13. Important distinction: filter vs execution
+# 21. Order-Book Filter Is an Entry Gate
 
-The order-book filter is an entry gate.
-
-It is NOT the strategy itself.
+The order-book filter is **not the trading strategy**.
 
 The architecture is:
 
 ```text
-Pine Strategy
-    |
-    | decides LONG / SHORT / CLOSE
-    v
-TradingView webhook
-    |
-    v
+TradingView / Pine
+        |
+        | LONG / SHORT / CLOSE
+        v
+TradingView Webhook
+        |
+        v
+server_v3.js
+        |
+        v
 trading.js
-    |
-    | asks order-book filter for LONG/SHORT entries
-    v
+        |
+        | Entry?
+        v
 orderBook.js
-    |
-    | PASS / BLOCK
-    v
+        |
+        | PASS / BLOCK
+        v
 weex.js
-    |
-    v
-WEEX execution
+        |
+        v
+WEEX
 ```
 
-This separation makes it possible to tune order-flow thresholds without changing WEEX execution logic.
+TradingView remains responsible for the actual strategy signal.
+
+The order-book filter only acts as an additional execution gate for new LONG/SHORT entries.
 
 ---
 
-# 14. CLOSE actions and order-book safety
+# 22. CLOSE Safety
 
-CLOSE actions are never passed through the order-book filter.
+CLOSE actions are never filtered through the order book.
 
 Supported close actions:
 
@@ -521,20 +712,23 @@ CLOSE_LONG
 CLOSE_SHORT
 ```
 
-This is intentional.
-
-If a position needs to be closed, the bot must not require the order book to be favorable before allowing the close.
-
 The rule is:
 
 ```text
-OPEN LONG/SHORT -> order-book filter applies
-CLOSE          -> order-book filter does not apply
+OPEN LONG/SHORT -> Order-book filter applies
+
+CLOSE           -> Order-book filter does NOT apply
 ```
+
+This is intentional.
+
+If a position needs to be closed, the bot must not require favorable order-book conditions before allowing the close.
+
+Closing risk takes priority over entry filtering.
 
 ---
 
-# 15. trading/trading.js
+# 23. trading/trading.js
 
 ## Role
 
@@ -542,163 +736,34 @@ CLOSE          -> order-book filter does not apply
 
 It handles:
 
-- LONG;
-- SHORT;
-- CLOSE;
-- CLOSE_LONG;
-- CLOSE_SHORT;
-- live position checks;
-- same-direction suppression;
-- reversals;
-- fresh order-book checks before opening;
-- position verification;
-- per-symbol concurrency locks;
-- order-book statistics.
+* LONG signals;
+* SHORT signals;
+* CLOSE;
+* CLOSE_LONG;
+* CLOSE_SHORT;
+* live position checks;
+* same-direction suppression;
+* reversals;
+* fresh order-book checks;
+* position confirmation;
+* per-symbol concurrency locks;
+* order-book statistics.
+
+It orchestrates the trading process but does not contain the low-level WEEX API implementation.
 
 ---
 
-# 16. Same-direction behavior
+# 24. Real WEEX Position Is the Source of Truth
 
-If TradingView sends LONG while WEEX is already LONG:
+The bot checks the actual WEEX position before making execution decisions.
 
-```text
-LONG signal
-    |
-    v
-Current position = LONG
-    |
-    v
-NO ACTION
-```
-
-Likewise, SHORT while already SHORT produces no additional entry order.
-
-This prevents duplicate same-direction positions/orders from repeated alerts.
-
----
-
-# 17. Flat -> entry behavior
-
-When WEEX reports FLAT and TradingView sends LONG or SHORT:
-
-```text
-TradingView signal
-       |
-       v
-Confirm FLAT
-       |
-       v
-Fresh order-book check
-       |
-       +---- BLOCKED -> remain FLAT
-       |
-       v
-Check balance
-       |
-       v
-Get current price
-       |
-       v
-Calculate quantity
-       |
-       v
-Ensure leverage/margin configuration
-       |
-       v
-Place MARKET order
-       |
-       v
-Confirm WEEX position
-```
-
-The position is only considered successfully opened after WEEX confirms the requested direction.
-
----
-
-# 18. Reversal behavior
-
-When the bot receives the opposite direction while a position is already open, it does NOT immediately open the opposite position.
-
-Correct sequence:
-
-```text
-CURRENT POSITION
-       |
-       v
-CLOSE OLD POSITION
-       |
-       v
-WAIT FOR WEEX = FLAT
-       |
-       v
-FRESH ORDER-BOOK CHECK
-       |
-       +---- BLOCKED -> remain FLAT
-       |
-       v
-OPEN NEW DIRECTION
-       |
-       v
-WAIT FOR WEEX = NEW DIRECTION
-```
-
-Example:
-
-```text
-Current = LONG
-Signal  = SHORT
-
-LONG
- |
-v
-CLOSE LONG
- |
-v
-CONFIRM FLAT
- |
-v
-FRESH SHORT ORDER-BOOK CHECK
- |
-v
-OPEN SHORT
- |
-v
-CONFIRM SHORT
-```
-
-This is a critical safety behavior and should not be changed casually.
-
----
-
-# 19. Per-symbol trading locks
-
-`trading.js` uses a lock per symbol.
-
-Example:
-
-```text
-BTCUSDT  -> locked
-MINAUSDT -> can still process independently
-SOLUSDT  -> can still process independently
-```
-
-The lock prevents two simultaneous operations for the same symbol from racing with each other.
-
-The lock is intentionally NOT global.
-
-A BTC operation should not block an unrelated MINA or SOL signal.
-
----
-
-# 20. Real WEEX position is the source of truth
-
-Every trading signal checks the real WEEX position through:
+The position endpoint is:
 
 ```text
 /capi/v3/account/position/singlePosition
 ```
 
-The bot uses that live result to determine whether the symbol is:
+The exchange position is interpreted as:
 
 ```text
 FLAT
@@ -706,15 +771,233 @@ LONG
 SHORT
 ```
 
-Do not replace this with local position memory as the final execution authority.
+The bot should not rely on a local variable such as:
 
-The exchange is the source of truth.
+```text
+currentPosition = "LONG"
+```
+
+as the final authority.
+
+The exchange is always the source of truth.
+
+This protects against:
+
+* server restarts;
+* missed webhooks;
+* manually changed exchange positions;
+* rejected orders;
+* partially completed operations;
+* external exchange changes.
 
 ---
 
-# 21. Order-book statistics
+# 25. Same-Direction Behavior
 
-`trading.js` records order-book filter results.
+If TradingView sends LONG while WEEX is already LONG:
+
+```text
+LONG signal
+    |
+    v
+WEEX position = LONG
+    |
+    v
+NO ACTION
+```
+
+No additional LONG entry is created.
+
+Likewise:
+
+```text
+SHORT signal
+    |
+    v
+WEEX position = SHORT
+    |
+    v
+NO ACTION
+```
+
+This prevents duplicate same-direction entries caused by repeated TradingView alerts.
+
+---
+
+# 26. Flat → Entry Behavior
+
+When WEEX reports FLAT and TradingView sends a LONG or SHORT signal:
+
+```text
+TradingView Signal
+        |
+        v
+Confirm FLAT
+        |
+        v
+Fresh Order-Book Check
+        |
+        +---- BLOCKED
+        |       |
+        |       v
+        |    Remain FLAT
+        |
+        v
+Check Balance
+        |
+        v
+Get Current Price
+        |
+        v
+Calculate Quantity
+        |
+        v
+Ensure Leverage / Margin Configuration
+        |
+        v
+Place MARKET Order
+        |
+        v
+Confirm WEEX Position
+```
+
+The position is only considered successfully opened after WEEX confirms the requested direction.
+
+---
+
+# 27. Reversal Behavior
+
+Reversals are intentionally handled in two stages.
+
+The bot must never immediately open the opposite direction before closing the existing position.
+
+Correct sequence:
+
+```text
+CURRENT POSITION
+        |
+        v
+CLOSE OLD POSITION
+        |
+        v
+WAIT FOR WEEX = FLAT
+        |
+        v
+FRESH ORDER-BOOK CHECK
+        |
+        +---- BLOCKED
+        |       |
+        |       v
+        |    REMAIN FLAT
+        |
+        v
+OPEN NEW DIRECTION
+        |
+        v
+WAIT FOR WEEX = NEW DIRECTION
+```
+
+Example:
+
+```text
+Current Position = LONG
+Incoming Signal  = SHORT
+```
+
+The bot performs:
+
+```text
+LONG
+ |
+ v
+CLOSE LONG
+ |
+ v
+CONFIRM FLAT
+ |
+ v
+FRESH SHORT ORDER-BOOK CHECK
+ |
+ +---- BLOCKED -> Remain FLAT
+ |
+ v
+OPEN SHORT
+ |
+ v
+CONFIRM SHORT
+```
+
+This is a critical safety behavior.
+
+Do not change this sequence casually.
+
+---
+
+# 28. Reversal + Order-Book Blocking
+
+A reversal can intentionally finish with no position.
+
+Example:
+
+```text
+Current = LONG
+Signal  = SHORT
+```
+
+Process:
+
+```text
+CLOSE LONG
+     |
+     v
+CONFIRM FLAT
+     |
+     v
+SHORT order-book check
+     |
+     v
+BLOCKED
+```
+
+Final state:
+
+```text
+FLAT
+```
+
+The old position is already closed.
+
+The bot does not reopen the old direction merely because the new direction was blocked.
+
+This behavior is intentional.
+
+---
+
+# 29. Per-Symbol Trading Locks
+
+The trading controller uses a lock per symbol.
+
+Example:
+
+```text
+BTCUSDT  -> locked
+
+MINAUSDT -> can process independently
+
+SOLUSDT  -> can process independently
+```
+
+The lock prevents simultaneous operations for the same symbol from racing with one another.
+
+The lock is **not global**.
+
+A BTCUSDT operation must not unnecessarily block MINAUSDT or SOLUSDT.
+
+---
+
+# 30. Order-Book Statistics
+
+`trading.js` maintains in-memory statistics for order-book filtering.
 
 Global statistics include:
 
@@ -732,126 +1015,129 @@ short.accepted
 short.rejected
 
 reasons
+
 symbols
 ```
 
-Per-symbol statistics include the same direction breakdown and rejection reasons.
+Per-symbol statistics contain similar information.
 
-This is useful for measuring how aggressive the filter is in live testing.
-
-For example, the statistics can answer:
+These statistics help answer:
 
 ```text
 How many LONG signals were checked?
-How many passed?
-How many were blocked?
+
+How many LONG signals passed?
+
+How many LONG signals were blocked?
+
+How many SHORT signals were checked?
+
+How many SHORT signals passed?
+
 Which rejection reason caused the blocks?
-Which coins are being blocked most often?
+
+Which symbols are being blocked most frequently?
 ```
 
-The statistics reset when `resetOrderBookStats()` is called or when the process restarts, because they are kept in memory.
+The statistics are kept in memory.
+
+Therefore they reset when:
+
+```text
+resetOrderBookStats()
+```
+
+is called or when the server process restarts.
+
+They should not be treated as permanent historical trading statistics.
 
 ---
 
-# 22. Order-book rejection behavior
+# 31. Order-Book Rejection Behavior
 
-A blocked entry does NOT close an existing position in the normal flat-entry case.
-
-For a FLAT -> LONG/SHORT signal:
+For a FLAT entry:
 
 ```text
-Signal
-  |
-  v
-Order book BLOCK
-  |
-  v
-No opening order
-  |
-  v
+TradingView Signal
+        |
+        v
+Order-Book Check
+        |
+        v
+BLOCK
+        |
+        v
+No Opening Order
+        |
+        v
 Remain FLAT
 ```
+
+The filter does not create a position and does not close anything in this situation.
 
 For a reversal:
 
 ```text
-OLD POSITION
-  |
-  v
+Existing Position
+        |
+        v
 CLOSE
-  |
-  v
+        |
+        v
 CONFIRM FLAT
-  |
-  v
-Order book BLOCK
-  |
-  v
+        |
+        v
+Order-Book Check
+        |
+        v
+BLOCK
+        |
+        v
 Remain FLAT
 ```
 
-Therefore a reversal can intentionally end with no position if the fresh order book does not support the new direction.
-
 ---
 
-# 23. Current REST request flow
+# 32. Typical LONG Entry REST Flow
 
-Typical LONG entry flow:
+A normal LONG entry can involve requests such as:
 
 ```text
 GET  /capi/v3/account/position/singlePosition
+
 GET  /capi/v3/market/depth
+
 GET  /capi/v3/account/balance
+
 GET  /capi/v3/market/ticker/bookTicker
+
 GET  /capi/v3/account/symbolConfig
-POST /capi/v3/account/leverage        # only when needed
-POST /capi/v3/order                    # MARKET open
+
+POST /capi/v3/account/leverage
+     # only when necessary
+
+POST /capi/v3/order
+     # MARKET open
+
 GET  /capi/v3/account/position/singlePosition
 ```
 
-The exact sequence can vary depending on the current position and whether leverage already matches configuration.
+The exact sequence can vary depending on:
+
+* current position;
+* cached contract information;
+* current leverage;
+* current symbol configuration;
+* whether an entry is allowed;
+* whether additional WEEX verification is required.
 
 Closing uses the live position and a reduce-only MARKET order.
 
 ---
 
-# 24. API credentials and security
+# 33. Manual Trading Endpoints
 
-Do not place WEEX credentials directly into source files.
-
-Use `.env` / configuration variables for:
-
-```text
-API_KEY
-API_SECRET
-API_PASSPHRASE
-```
-
-Never commit real credentials to GitHub or paste them into public logs.
-
-The README intentionally does not contain actual credentials.
-
----
-
-# 25. Useful endpoints
-
-The current V3 server exposes these main operations:
-
-## TradingView webhook
-
-```text
-POST /webhook
-```
-
-Expected actions include:
-
-```text
-LONG
-SHORT
-CLOSE
-CLOSE_LONG
-CLOSE_SHORT
-```
+The V3 server exposes manual execution endpoints.
 
 ## Manual LONG
 
@@ -871,94 +1157,126 @@ POST /manual-short?symbol=BTCUSDT
 POST /manual-close?symbol=BTCUSDT
 ```
 
-## Read-only order-book test
+Manual endpoints still operate through the V3 trading controller and WEEX execution layer.
+
+Use them intentionally because they can create real trades.
+
+---
+
+# 34. Read-Only Order-Book Testing
+
+The bot provides read-only order-book testing:
 
 ```text
 GET /test-orderbook?symbol=BTCUSDT&direction=LONG
+
 GET /test-orderbook?symbol=BTCUSDT&direction=SHORT
 ```
 
-This endpoint must remain read-only.
+This endpoint is intended for debugging and threshold evaluation.
 
-It must NEVER place an order.
+It must remain completely read-only.
 
-## Status
+It must:
+
+* retrieve order-book data;
+* calculate the filter;
+* report the result;
+
+but it must **never**:
+
+* open a position;
+* close a position;
+* reverse a position;
+* place any trading order.
+
+---
+
+# 35. Status Endpoint
+
+The main status endpoint is:
 
 ```text
 GET /status
 ```
 
-## Current position
+It is intended to provide information about the running V3 server and its current state.
+
+---
+
+# 36. Current Position Endpoint
+
+The current position can be checked through:
 
 ```text
 GET /position?symbol=BTCUSDT
 ```
 
-## Available symbols
+The response should reflect the actual WEEX account position rather than a local position-memory variable.
+
+---
+
+# 37. Supported Symbols Endpoint
+
+Available/discovered symbols can be checked through:
 
 ```text
 GET /symbols
 ```
 
-## Refresh contracts
+This reflects the current contract discovery state.
+
+---
+
+# 38. Refresh Contracts
+
+The contract list can be refreshed through:
 
 ```text
 POST /refresh-symbols
 ```
 
----
-
-# 26. Testing workflow
-
-When making a code change:
-
-```text
-1. Make the smallest change possible.
-2. Run syntax checks.
-3. Restart server_v3.js.
-4. Confirm WEEX contract discovery succeeds.
-5. Confirm server status.
-6. Test /test-orderbook first.
-7. Test /position.
-8. Test manual endpoints only when intentionally needed.
-9. Then allow TradingView live signals.
-```
-
-Recommended syntax checks:
-
-```powershell
-node --check server_v3.js
-node --check config/config.js
-node --check weex/weex.js
-node --check filters/orderBook.js
-node --check trading/trading.js
-node --check utils/logger.js
-```
+This allows the bot to update its supported-symbol and contract-information state without replacing the automatic discovery system with a hard-coded list.
 
 ---
 
-# 27. Debugging order-book behavior
+# 39. Order-Book Debugging
 
-When an entry is blocked, inspect the actual logged values:
+When an entry is blocked, inspect the actual measurements.
+
+Important values include:
 
 ```text
 Direction
-Depth levels
-Best bid
-Best ask
-Bid liquidity
-Ask liquidity
-Bid percentage
-Ask percentage
+
+Depth Levels
+
+Best Bid
+
+Best Ask
+
+Bid Liquidity
+
+Ask Liquidity
+
+Bid Percentage
+
+Ask Percentage
+
 Imbalance
-Bid/Ask ratio
-Ask/Bid ratio
+
+Bid/Ask Ratio
+
+Ask/Bid Ratio
 ```
 
 For LONG:
 
 ```text
 imbalance >= LONG_MIN_IMBALANCE
+
+AND
+
 bidAskRatio >= MIN_BID_ASK_RATIO
 ```
 
@@ -966,90 +1284,307 @@ For SHORT:
 
 ```text
 imbalance <= SHORT_MAX_IMBALANCE
+
+AND
+
 askBidRatio >= MIN_ASK_BID_RATIO
 ```
 
-Do not judge the filter only from the final `allowed` value. Look at the individual measurements and pass/fail fields.
+Do not evaluate the filter only from:
+
+```text
+allowed = false
+```
+
+Inspect the individual values and pass/fail fields.
+
+This makes it possible to determine exactly why an entry was rejected.
 
 ---
 
-# 28. Strategy tuning notes
+# 40. Order-Book Threshold Tuning
 
-The order-book filter can become too restrictive if its thresholds are too demanding.
+The order-book filter is an additional execution filter.
 
-A high rejection rate does not automatically mean the filter is working well. It can also mean that valid TradingView setups are being discarded.
+It can become too restrictive if thresholds are too demanding.
 
-When tuning it, compare:
+A high rejection rate does not automatically mean the filter is good.
 
-```text
-TradingView signals
-        |
-        +---- accepted by order book
-        |
-        +---- rejected by order book
-        |
-        +---- resulting trades
-        |
-        +---- win/loss outcome
-```
-
-Do not change several thresholds simultaneously when trying to understand the effect of one parameter.
-
-Recommended A/B testing approach:
+For example:
 
 ```text
-Test A -> current settings
-Test B -> change ONE threshold
-Compare -> acceptance rate + trade quality
+Very high rejection rate
+        |
+        +---- Could mean strong filtering
+        |
+        +---- Could also mean valid setups are being discarded
 ```
 
-The order-book filter should remain a supporting execution filter, not replace the TradingView strategy logic.
+The correct evaluation should compare:
+
+```text
+TradingView Signals
+        |
+        +---- Accepted
+        |
+        +---- Rejected
+        |
+        +---- Resulting Trades
+        |
+        +---- Wins
+        |
+        +---- Losses
+```
+
+The goal is not simply:
+
+```text
+Maximum acceptance
+```
+
+or:
+
+```text
+Minimum acceptance
+```
+
+The goal is better trade quality without unnecessarily destroying valid TradingView setups.
 
 ---
 
-# 29. Safety rules / Do not break
+# 41. A/B Testing Order-Book Settings
 
-These rules are important for future code changes.
+When tuning the order-book filter, change one parameter at a time.
 
-## 1. Never remove real position verification
+Example:
 
-WEEX is the source of truth.
+```text
+Test A
+Current settings
 
-## 2. Never filter CLOSE actions through the order book
+vs.
 
-Closing risk must remain executable even when the order book is unfavorable.
+Test B
+Change ONE threshold
+```
 
-## 3. Reversals must close first
+Then compare:
+
+```text
+Acceptance Rate
+
+Number of Trades
+
+Winning Trades
+
+Losing Trades
+
+Profit/Loss
+
+Average Trade Quality
+```
+
+Avoid changing several thresholds simultaneously.
+
+Otherwise it becomes difficult to determine which parameter caused the change.
+
+Important order-book configuration values are:
+
+```text
+ORDER_BOOK_DEPTH
+
+LONG_MIN_IMBALANCE
+
+SHORT_MAX_IMBALANCE
+
+MIN_BID_ASK_RATIO
+
+MIN_ASK_BID_RATIO
+```
+
+Changing these values is an explicit strategy/filter change.
+
+They should not be modified silently during unrelated code work.
+
+---
+
+# 42. Strategy vs Execution Boundary
+
+The project has a strict separation between signal generation and execution.
+
+```text
+TRADINGVIEW / PINE
+------------------
+
+Generates:
+LONG
+SHORT
+CLOSE
+
+        |
+        v
+
+WEEX BOT
+--------
+
+Validates signal
+
+        |
+
+Checks live WEEX position
+
+        |
+
+For LONG/SHORT:
+Checks order book
+
+        |
+
+Calculates quantity
+
+        |
+
+Checks leverage/margin
+
+        |
+
+Places order
+
+        |
+
+Confirms resulting position
+```
+
+Therefore:
+
+```text
+TradingView = SIGNAL GENERATOR
+
+WEEX BOT = EXECUTION + SAFETY LAYER
+```
+
+The order-book filter is part of the execution/safety layer.
+
+---
+
+# 43. Current Architecture
+
+The current baseline architecture is:
+
+```text
+server_v3.js
+      |
+      v
+trading/trading.js
+      |
+      +--------------------+
+      |                    |
+      v                    v
+filters/orderBook.js    weex/weex.js
+                              |
+                              v
+                           WEEX API
+```
+
+Responsibilities remain separated:
+
+```text
+server_v3.js
+    =
+HTTP + webhook layer
+
+trading.js
+    =
+Signal orchestration + position logic + statistics
+
+orderBook.js
+    =
+Order-book analysis
+
+weex.js
+    =
+WEEX API + execution
+
+config.js
+    =
+Configuration
+
+logger.js
+    =
+Logging
+```
+
+---
+
+# 44. V3 Safety Rules
+
+These rules must be preserved during future development.
+
+## Rule 1 — Never remove real position verification
+
+WEEX is the final source of truth.
+
+---
+
+## Rule 2 — Never filter CLOSE through the order book
+
+Closing a position must remain possible even when the order book is unfavorable.
+
+---
+
+## Rule 3 — Reversals must close first
 
 Always:
 
 ```text
-CLOSE -> CONFIRM FLAT -> FRESH ORDER BOOK -> OPEN -> CONFIRM
+CLOSE
+  ->
+CONFIRM FLAT
+  ->
+FRESH ORDER-BOOK CHECK
+  ->
+OPEN
+  ->
+CONFIRM NEW DIRECTION
 ```
 
-## 4. Keep per-symbol locks
+---
 
-Prevent duplicate/racing operations for the same symbol without creating a global lock.
+## Rule 4 — Keep per-symbol locks
 
-## 5. Keep the fast webhook acknowledgement
+Prevent racing operations for the same symbol.
 
-TradingView should receive HTTP 200 quickly.
+Do not replace them with a global lock unless explicitly required.
 
-## 6. Keep order-book tests read-only
+---
 
-`/test-orderbook` must never place an order.
+## Rule 5 — Keep fast webhook acknowledgement
 
-## 7. Keep automatic symbol discovery
+TradingView should receive HTTP `200` quickly.
 
-Do not hard-code the full WEEX coin list.
+---
 
-## 8. Preserve step-size retry
+## Rule 6 — Keep `/test-orderbook` read-only
 
-WEEX-reported step sizes can differ from cached contract data.
+It must never place an order.
 
-## 9. Do not silently change trading risk
+---
 
-Treat these as explicit strategy/risk changes:
+## Rule 7 — Keep automatic contract discovery
+
+Do not replace it with a permanent hard-coded coin list.
+
+---
+
+## Rule 8 — Preserve step-size retry
+
+WEEX may report a required step size that differs from cached contract data.
+
+---
+
+## Rule 9 — Do not silently change risk settings
+
+Treat these as explicit risk changes:
 
 ```text
 DEFAULT_MARGIN
@@ -1057,9 +1592,11 @@ DEFAULT_LEVERAGE
 REQUIRED_MARGIN_MODE
 ```
 
-## 10. Do not silently change order-book thresholds
+---
 
-Treat these as explicit strategy changes:
+## Rule 10 — Do not silently change order-book settings
+
+Treat these as explicit strategy/filter changes:
 
 ```text
 ORDER_BOOK_DEPTH
@@ -1069,91 +1606,720 @@ MIN_BID_ASK_RATIO
 MIN_ASK_BID_RATIO
 ```
 
-## 11. Keep V3 separate from V2
+---
 
-`server_v2.js` is an older/backup implementation. Do not overwrite or remove it while working on V3 unless explicitly requested.
+## Rule 11 — Keep V3 separate from V2
 
-## 12. Do not invent WEEX API behavior
+`server_v2.js` is an older/backup implementation.
 
-Use the actual implementation and WEEX responses when debugging API behavior.
+Do not overwrite, delete or merge V2 into V3 unless explicitly requested.
 
 ---
 
-# 30. Development principles for future AI/code changes
+## Rule 12 — Do not invent WEEX API behavior
 
-When another AI works on this project, it should:
+When debugging an API issue, use:
 
-1. Read this README before changing architecture.
-2. Treat `server_v3.js` as the main entry point.
-3. Keep direct WEEX API communication in `weex/weex.js`.
-4. Keep order-book calculations in `filters/orderBook.js`.
-5. Keep signal orchestration and reversal logic in `trading/trading.js`.
-6. Keep configuration in `config/config.js`.
-7. Use live WEEX position checks.
-8. Preserve per-symbol locks.
-9. Preserve fast webhook acknowledgement.
-10. Preserve close safety.
-11. Preserve step-size retry.
-12. Test order-book behavior before live entries.
-13. Prefer the smallest testable change over a complete rewrite.
-14. Do not silently change trading parameters.
-15. Inspect real logs before changing code.
+1. actual implementation;
+2. actual request;
+3. actual response;
+4. actual WEEX documentation when required.
+
+Do not assume an endpoint behaves differently without evidence.
 
 ---
 
-# 31. Strategy vs execution boundary
+# 45. Development Principles
 
-The system has a clear separation:
+Future code changes should follow these principles:
+
+1. Read this README before modifying architecture.
+
+2. Identify which module actually owns the required behavior.
+
+3. Make the smallest practical change.
+
+4. Avoid unnecessary rewrites.
+
+5. Keep `server_v3.js` thin.
+
+6. Keep WEEX API communication in `weex.js`.
+
+7. Keep order-book calculations in `orderBook.js`.
+
+8. Keep signal orchestration in `trading.js`.
+
+9. Keep configuration in `config.js`.
+
+10. Use live WEEX position verification.
+
+11. Preserve per-symbol locks.
+
+12. Preserve fast webhook acknowledgement.
+
+13. Preserve close safety.
+
+14. Preserve step-size retry.
+
+15. Keep `/test-orderbook` read-only.
+
+16. Test order-book behavior before allowing live entries.
+
+17. Do not silently modify trading parameters.
+
+18. Inspect actual logs before changing filtering logic.
+
+19. Prefer a testable incremental change over a complete rewrite.
+
+20. Update this README whenever an intentional major behavior or architectural change is introduced.
+
+---
+
+# 46. Recommended Testing Workflow
+
+After making a code change:
 
 ```text
-TRADINGVIEW / PINE
-------------------
-Generates the trading signal.
+1. Make the smallest change possible.
 
+2. Run syntax checks.
+
+3. Restart server_v3.js.
+
+4. Confirm WEEX contract discovery succeeds.
+
+5. Confirm /status.
+
+6. Test /test-orderbook first.
+
+7. Test /position.
+
+8. Test manual endpoints only when intentionally required.
+
+9. Review logs.
+
+10. Only then allow TradingView live signals.
+```
+
+---
+
+# 47. JavaScript Syntax Checks
+
+Recommended checks:
+
+```powershell
+node --check server_v3.js
+
+node --check config/config.js
+
+node --check weex/weex.js
+
+node --check filters/orderBook.js
+
+node --check trading/trading.js
+
+node --check utils/logger.js
+```
+
+If only one file was modified, at minimum check that file before restarting the server.
+
+For important changes, check all V3 JavaScript files.
+
+---
+
+# 48. Debugging Philosophy
+
+When something does not behave as expected, do not immediately rewrite the system.
+
+First determine:
+
+```text
+1. What signal did TradingView send?
+
+2. What symbol reached the server?
+
+3. How was the symbol normalized?
+
+4. What position did WEEX report?
+
+5. Was the operation an entry, close or reversal?
+
+6. Was the order-book filter executed?
+
+7. What order-book values were returned?
+
+8. Why did the filter pass or fail?
+
+9. Was balance sufficient?
+
+10. What quantity was calculated?
+
+11. Was leverage/margin configuration valid?
+
+12. What did WEEX return?
+
+13. What position did WEEX report after execution?
+```
+
+The actual logs should be used to identify the failing layer before changing code.
+
+---
+
+# 49. Typical Entry Decision Tree
+
+For a new LONG or SHORT signal:
+
+```text
+TradingView Signal
         |
-        | LONG / SHORT / CLOSE
         v
-
-WEEX BOT
---------
-Validates the signal.
-Checks the real position.
-Applies the entry order-book filter.
-Calculates quantity.
-Checks leverage/margin configuration.
-Places/closes the WEEX order.
-Confirms the resulting position.
+Normalize Symbol
+        |
+        v
+Validate Symbol
+        |
+        v
+Check WEEX Position
+        |
+        +---- Same Direction
+        |         |
+        |         v
+        |      NO ACTION
+        |
+        +---- Opposite Direction
+        |         |
+        |         v
+        |      CLOSE OLD
+        |         |
+        |         v
+        |      CONFIRM FLAT
+        |
+        v
+Fresh Order-Book Check
+        |
+        +---- BLOCK
+        |       |
+        |       v
+        |    NO ENTRY
+        |
+        v
+Check Balance
+        |
+        v
+Get Price
+        |
+        v
+Calculate Quantity
+        |
+        v
+Ensure Leverage / Margin
+        |
+        v
+Place MARKET Order
+        |
+        v
+Confirm WEEX Position
 ```
-
-Therefore:
-
-```text
-TradingView = SIGNAL GENERATOR
-WEEX BOT    = EXECUTION + SAFETY LAYER
-```
-
-The order-book filter is part of the WEEX execution/safety layer.
 
 ---
 
-# 32. Current architecture baseline
+# 50. Typical CLOSE Decision
 
-As of the latest update, the baseline files are:
+For a CLOSE action:
+
+```text
+TradingView CLOSE
+        |
+        v
+Check WEEX Position
+        |
+        v
+Position exists?
+        |
+        +---- NO
+        |      |
+        |      v
+        |   Nothing to close
+        |
+        v
+Place Reduce-Only MARKET Close
+        |
+        v
+Wait for WEEX
+        |
+        v
+Confirm FLAT
+```
+
+The order-book filter is not involved.
+
+---
+
+# 51. Typical Reversal Decision
+
+For:
+
+```text
+Current = LONG
+Signal  = SHORT
+```
+
+or:
+
+```text
+Current = SHORT
+Signal  = LONG
+```
+
+the sequence is:
+
+```text
+1. Detect opposite position.
+
+2. Close existing position.
+
+3. Wait until WEEX reports FLAT.
+
+4. Request a fresh order book.
+
+5. Apply the new-direction filter.
+
+6. If blocked:
+      remain FLAT.
+
+7. If accepted:
+      calculate quantity.
+
+8. Verify leverage/margin.
+
+9. Open new direction.
+
+10. Confirm new WEEX position.
+```
+
+No step should be skipped casually.
+
+---
+
+# 52. Important Difference Between Entry and Close
+
+The system intentionally treats entries and exits differently.
+
+```text
+ENTRY
+
+Signal
+  |
+Order Book
+  |
+Balance
+  |
+Quantity
+  |
+Leverage
+  |
+Open
+```
+
+Whereas:
+
+```text
+CLOSE
+
+Signal
+  |
+Live Position
+  |
+Reduce-Only Close
+  |
+Confirm FLAT
+```
+
+The reason is simple:
+
+```text
+Entry = opportunity
+
+Close = risk reduction
+```
+
+The bot must not prevent an exit because the current order book is unfavorable.
+
+---
+
+# 53. Order-Book Statistics Interpretation
+
+Order-book statistics should be used as a diagnostic tool.
+
+Example:
+
+```text
+Total Signals:       157
+Accepted:              6
+Rejected:            151
+Acceptance Rate:    3.82%
+```
+
+This tells us the filter is highly restrictive.
+
+It does **not** automatically prove the filter is good or bad.
+
+The next step is to compare those accepted/rejected signals against the actual TradingView strategy outcomes.
+
+The useful question is:
+
+```text
+Did the order-book filter improve the quality of trades?
+```
+
+rather than:
+
+```text
+Did the filter block many trades?
+```
+
+---
+
+# 54. Logging Requirements
+
+Useful logs should make it possible to determine:
+
+```text
+Signal
+Symbol
+Normalized Symbol
+Current Position
+Requested Direction
+
+Order-Book Direction
+Order-Book Measurements
+Order-Book Decision
+
+Balance
+Price
+Quantity
+Notional
+Margin
+Leverage
+
+WEEX Order Result
+
+Final Position
+```
+
+For blocked entries, the log should make the reason visible.
+
+For example:
+
+```text
+ORDER_BOOK_DOES_NOT_SUPPORT_LONG
+```
+
+or:
+
+```text
+ORDER_BOOK_DOES_NOT_SUPPORT_SHORT
+```
+
+The raw measurements should be available for debugging.
+
+---
+
+# 55. What Future AI/code Changes Must Not Do
+
+Future modifications must not casually:
+
+```text
+- replace WEEX position checks with local state;
+- remove per-symbol locks;
+- add a global trading lock;
+- filter CLOSE through order book;
+- open the new direction before closing the old one;
+- remove reversal confirmation;
+- remove step-size retry;
+- replace automatic contract discovery with a static list;
+- move HMAC signing into trading.js;
+- move order-book calculations into server_v3.js;
+- put order placement into orderBook.js;
+- make /test-orderbook execute trades;
+- silently change margin;
+- silently change leverage;
+- silently change margin mode;
+- silently change order-book thresholds;
+- merge V2 into V3;
+- perform a large rewrite when a small fix is sufficient.
+```
+
+---
+
+# 56. V3 Module Responsibility Matrix
+
+| Module                 | Main Responsibility      | Must Not Own          |
+| ---------------------- | ------------------------ | --------------------- |
+| `server_v3.js`         | HTTP, webhook, endpoints | WEEX order logic      |
+| `config/config.js`     | Configuration            | Trading execution     |
+| `weex/weex.js`         | WEEX API and execution   | Strategy decisions    |
+| `filters/orderBook.js` | Order-book analysis      | Order placement       |
+| `trading/trading.js`   | Signal orchestration     | Low-level API signing |
+| `utils/logger.js`      | Logging                  | Trading decisions     |
+
+This separation should be preserved.
+
+---
+
+# 57. Current Baseline
+
+The current V3 baseline consists of:
 
 ```text
 server_v3.js
+
 config/config.js
+
 weex/weex.js
+
 filters/orderBook.js
+
 trading/trading.js
+
 utils/logger.js
 ```
 
-The current `weex.js` implementation is responsible for WEEX API communication and market execution.
+Current behavior:
 
-The current `trading.js` implementation is responsible for signal processing, live-position logic, reversal handling, order-book entry checks, and order-book statistics.
+```text
+TradingView
+    |
+    v
+server_v3.js
+    |
+    v
+trading.js
+    |
+    +----> orderBook.js
+    |
+    v
+weex.js
+    |
+    v
+WEEX V3
+```
 
-The current order-book integration uses the `getOrderBook()` function supplied by `weex.js` and performs a fresh depth request when an entry is evaluated.
+The current order-book integration uses:
+
+```text
+trading.js
+    |
+    v
+checkOrderBook()
+    |
+    v
+weex.getOrderBook()
+    |
+    v
+WEEX REST market depth
+```
+
+A fresh depth request is performed when an entry is evaluated.
+
+---
+
+# 58. Current System Principles
+
+The most important design principles are:
+
+```text
+1. TradingView decides the signal.
+
+2. WEEX decides the actual position state.
+
+3. The bot verifies the exchange before trading.
+
+4. New entries are subject to order-book filtering.
+
+5. CLOSE actions bypass order-book filtering.
+
+6. Reversals close first.
+
+7. Reversals confirm FLAT before reopening.
+
+8. Every new direction receives a fresh order-book check.
+
+9. Same-direction signals do nothing.
+
+10. Operations are locked per symbol.
+
+11. Webhook acknowledgement remains fast.
+
+12. Contract discovery remains automatic.
+
+13. Quantity respects WEEX contract rules.
+
+14. Step-size rejection can trigger one recalculation/retry.
+
+15. Risk settings are explicit.
+
+16. Order-book settings are explicit.
+
+17. V2 remains separate from V3.
+
+18. Real logs and exchange responses are the authority when debugging.
+```
+
+---
+
+# 59. Version History
+
+## SERVER V3 — 2026-08-31
+
+Current documented architecture and behavior:
+
+* `server_v3.js` is the main entry point.
+* TradingView webhook processing uses fast HTTP acknowledgement.
+* Trading execution is handled in `trading/trading.js`.
+* Direct WEEX API communication remains in `weex/weex.js`.
+* Order-book calculations remain in `filters/orderBook.js`.
+* Configuration remains centralized in `config/config.js`.
+* WEEX live position remains the execution source of truth.
+* Automatic WEEX contract discovery remains enabled.
+* TradingView symbol normalization remains supported.
+* Quantity calculation respects WEEX contract constraints.
+* WEEX step-size rejection retry is preserved.
+* Margin mode and leverage are verified before opening positions.
+* LONG entries require LONG order-book support.
+* SHORT entries require SHORT order-book support.
+* CLOSE actions bypass the order-book filter.
+* Same-direction duplicate signals are suppressed.
+* Reversals close the existing position before evaluating the new direction.
+* Reversals confirm FLAT before opening the new direction.
+* Reversals perform a fresh order-book check.
+* Rejected reversal entries can intentionally finish FLAT.
+* Per-symbol locks are preserved.
+* Order-book statistics are maintained in memory.
+* `/test-orderbook` remains read-only.
+* V2 remains separate from V3.
+
+---
+
+# 60. Future Change Documentation Rule
+
+Whenever a major intentional behavior or architecture change is made, update this README.
+
+At minimum, document:
+
+```text
+Date
+Change
+Affected File(s)
+New Behavior
+Reason for Change
+Important Safety Impact
+```
+
+Example:
+
+```text
+## 2026-09-XX — Order-Book Filter Update
+
+Affected files:
+- filters/orderBook.js
+- config/config.js
+- trading/trading.js
+
+Change:
+Adjusted the order-book acceptance logic.
+
+New behavior:
+LONG and SHORT entries use the updated threshold configuration.
+
+Safety:
+CLOSE actions remain completely unaffected.
+
+Reason:
+Improve the balance between filtering weak entries and allowing valid TradingView setups.
+```
+
+Do not rewrite historical behavior as though it had always existed.
+
+Keep intentional changes traceable.
+
+---
+
+# 61. Final Architecture
+
+```text
+                         TRADINGVIEW
+                             |
+                             |
+                    LONG / SHORT / CLOSE
+                             |
+                             v
+                     +---------------+
+                     | server_v3.js  |
+                     |               |
+                     | HTTP/Webhook  |
+                     +-------+-------+
+                             |
+                             v
+                    +----------------+
+                    | trading.js     |
+                    |                |
+                    | Position logic |
+                    | Reversals      |
+                    | Locks          |
+                    | Statistics     |
+                    +---+--------+---+
+                        |        |
+             ENTRY ONLY |        | WEEX
+                        v        v
+                +-----------+  +-----------+
+                | orderBook |  |  weex.js  |
+                |           |  |           |
+                | Depth     |  | API Auth  |
+                | Imbalance |  | Balance   |
+                | Ratios    |  | Position  |
+                | Filter    |  | Quantity  |
+                +-----------+  | Orders    |
+                        |      | Leverage  |
+                        |      +-----+-----+
+                        |            |
+                        +------------+
+                                     |
+                                     v
+                              +-------------+
+                              | WEEX V3     |
+                              | USDT-M       |
+                              | FUTURES      |
+                              +-------------+
+```
+
+The final responsibility boundary is:
+
+```text
+TRADINGVIEW
+    =
+Signal Generation
+
+SERVER V3
+    =
+HTTP + Webhook Transport
+
+TRADING.JS
+    =
+Trading Controller + Safety Logic
+
+ORDERBOOK.JS
+    =
+Entry Market-Depth Filter
+
+WEEX.JS
+    =
+Exchange API + Execution
+
+WEEX
+    =
+Final Position State
+```
 
 ---
 
@@ -1161,11 +2327,33 @@ The current order-book integration uses the `getOrderBook()` function supplied b
 
 ```text
 SERVER V3
-Updated: 2026-08-31
-Main entry point: server_v3.js
-Execution exchange: WEEX V3 USDT-M Futures
-Position source of truth: WEEX live account position
-Order-book source: WEEX market depth via weex.js
-```
 
-Keep this README updated whenever a major architectural or behavior change is intentionally introduced.
+Updated: 2026-08-31
+
+Main entry point:
+server_v3.js
+
+Execution exchange:
+WEEX V3 USDT-M Futures
+
+Position source of truth:
+WEEX live account position
+
+Order-book source:
+WEEX REST market depth via weex.js
+
+Architecture:
+TradingView -> server_v3.js -> trading.js -> weex.js -> WEEX
+
+Entry filter:
+filters/orderBook.js
+
+Configuration:
+config/config.js
+
+Logging:
+utils/logger.js
+
+V2:
+Kept separate as legacy/backup implementation
+

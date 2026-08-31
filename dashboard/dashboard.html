@@ -1,88 +1,15 @@
 <!DOCTYPE html>
 
 <html lang="en">
+
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>WEEX Trading Dashboard</title>
-<link rel="stylesheet" href="/dashboard/dashboard.css">
 
-<style>
-.auto-trader-controls{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    flex-wrap:wrap;
-}
-.auto-trader-controls select{
-    min-width:180px;
-    padding:10px 12px;
-    border-radius:8px;
-    border:1px solid #333;
-    background:#111;
-    color:#fff;
-}
-.live-orderbook{
-    display:grid;
-    grid-template-columns:repeat(4,minmax(0,1fr));
-    gap:12px;
-}
-.orderbook-stat{
-    padding:16px;
-    border-radius:10px;
-    background:rgba(255,255,255,.03);
-    border:1px solid rgba(255,255,255,.08);
-}
-.orderbook-stat span{
-    display:block;
-    font-size:12px;
-    opacity:.65;
-    margin-bottom:6px;
-}
-.orderbook-stat strong{
-    font-size:20px;
-}
-.orderbook-direction{
-    margin-top:16px;
-    padding:18px;
-    border-radius:10px;
-    text-align:center;
-    font-size:22px;
-    font-weight:700;
-    background:rgba(255,255,255,.04);
-}
-.orderbook-direction.long{
-    border:1px solid rgba(0,200,100,.5);
-}
-.orderbook-direction.short{
-    border:1px solid rgba(255,70,70,.5);
-}
-.orderbook-direction.neutral{
-    border:1px solid rgba(255,180,0,.5);
-}
-.orderbook-time{
-    margin-top:10px;
-    font-size:12px;
-    opacity:.6;
-}
-.auto-status-grid{
-    display:grid;
-    grid-template-columns:repeat(4,minmax(0,1fr));
-    gap:12px;
-}
-@media(max-width:900px){
-    .live-orderbook,
-    .auto-status-grid{
-        grid-template-columns:repeat(2,minmax(0,1fr));
-    }
-}
-@media(max-width:600px){
-    .live-orderbook,
-    .auto-status-grid{
-        grid-template-columns:1fr;
-    }
-}
-</style>
+<title>WEEX Trading Dashboard</title>
+
+<link rel="stylesheet" href="/dashboard/dashboard.css">
 
 </head>
 
@@ -90,511 +17,1477 @@
 
 <div class="app">
 
+<!-- ============================================================
+     HEADER
+============================================================ -->
+
 <header class="header">
+
+
 <div>
-<div class="eyebrow">WEEX V3 USDT-M FUTURES</div>
-<h1>Trading Dashboard</h1>
-<p class="subtitle">Order-flow monitoring and automatic trading</p>
+
+    <div class="eyebrow">
+        WEEX V3 USDT-M FUTURES
+    </div>
+
+    <h1>
+        Trading Dashboard
+    </h1>
+
+    <p class="subtitle">
+        Order-flow monitoring and automatic trading
+    </p>
+
 </div>
+
 
 <div class="header-actions">
-<span id="connectionStatus" class="connection disconnected">● OFFLINE</span>
 
-<button id="refreshButton" class="button primary" onclick="loadDashboard()">
-↻ Refresh
-</button>
+    <span
+        id="connectionStatus"
+        class="connection disconnected">
+        ● OFFLINE
+    </span>
+
+    <button
+        id="refreshButton"
+        class="button primary"
+        onclick="loadDashboard()">
+        ↻ Refresh
+    </button>
+
 </div>
+
+
 </header>
 
-<!-- ==================================================
+<!-- ============================================================
      TOP STATUS
-================================================== -->
+============================================================ -->
 
 <section class="cards">
 
-<div class="card">
-<div class="card-label">BOT STATUS</div>
-<div id="botStatus" class="card-value">--</div>
-<div id="botMode" class="card-detail">--</div>
-</div>
 
 <div class="card">
-<div class="card-label">AVAILABLE BALANCE</div>
-<div id="balance" class="card-value">--</div>
-<div class="card-detail">USDT</div>
+
+    <div class="card-label">
+        BOT STATUS
+    </div>
+
+    <div
+        id="botStatus"
+        class="card-value">
+        --
+    </div>
+
+    <div
+        id="botMode"
+        class="card-detail">
+        --
+    </div>
+
 </div>
 
-<div class="card">
-<div class="card-label">POSITION NOTIONAL</div>
-<div id="notional" class="card-value">--</div>
-<div class="card-detail">USDT</div>
-</div>
 
 <div class="card">
-<div class="card-label">SYMBOLS</div>
-<div id="symbolCount" class="card-value">--</div>
-<div class="card-detail">WEEX contracts</div>
+
+    <div class="card-label">
+        AVAILABLE BALANCE
+    </div>
+
+    <div
+        id="balance"
+        class="card-value">
+        --
+    </div>
+
+    <div class="card-detail">
+        USDT
+    </div>
+
 </div>
+
+
+<div class="card">
+
+    <div class="card-label">
+        POSITION NOTIONAL
+    </div>
+
+    <div
+        id="notional"
+        class="card-value">
+        --
+    </div>
+
+    <div class="card-detail">
+        USDT
+    </div>
+
+</div>
+
+
+<div class="card">
+
+    <div class="card-label">
+        SYMBOLS
+    </div>
+
+    <div
+        id="symbolCount"
+        class="card-value">
+        --
+    </div>
+
+    <div class="card-detail">
+        WEEX contracts
+    </div>
+
+</div>
+
 
 </section>
 
-<!-- ==================================================
+<!-- ============================================================
      AUTOMATIC TRADER
-================================================== -->
+============================================================ -->
 
 <section class="panel">
 
+
 <div class="panel-header">
 
-<div>
-<div class="eyebrow">AUTOMATIC TRADER</div>
-<h2>Hourly Order-Book Trader</h2>
+    <div>
+
+        <div class="eyebrow">
+            AUTOMATIC TRADER
+        </div>
+
+        <h2>
+            Hourly Order-Book Trader
+        </h2>
+
+    </div>
+
+
+    <div class="auto-trader-controls">
+
+        <select id="autoCoin">
+
+            <option value="">
+                Loading coins...
+            </option>
+
+        </select>
+
+
+        <button
+            id="autoRunButton"
+            class="button primary"
+            onclick="runAutomaticTrader()">
+            ▶ Run Scan Now
+        </button>
+
+
+        <button
+            id="forceAutoCheckButton"
+            class="button primary"
+            onclick="forceAutomaticCheck()">
+            🔄 Force Hourly Check
+        </button>
+
+    </div>
+
 </div>
 
-<div class="auto-trader-controls">
-
-<select id="autoCoin">
-<option value="">Loading coins...</option>
-</select>
-
-<button
-id="autoRunButton"
-class="button primary"
-onclick="runAutomaticTrader()">
-▶ Run Scan Now </button>
-
-</div>
-
-</div>
 
 <div class="auto-status-grid">
 
-<div class="stat-box">
-<span class="stat-label">Status</span>
-<strong id="autoStatus">--</strong>
+
+    <div class="stat-box">
+
+        <span class="stat-label">
+            Status
+        </span>
+
+        <strong id="autoStatus">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="stat-box">
+
+        <span class="stat-label">
+            Interval
+        </span>
+
+        <strong id="autoInterval">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="stat-box">
+
+        <span class="stat-label">
+            Last Scan
+        </span>
+
+        <strong id="autoLastRun">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="stat-box">
+
+        <span class="stat-label">
+            Next Scan
+        </span>
+
+        <strong id="autoNextRun">
+            --
+        </strong>
+
+    </div>
+
+
 </div>
 
-<div class="stat-box">
-<span class="stat-label">Interval</span>
-<strong id="autoInterval">--</strong>
-</div>
-
-<div class="stat-box">
-<span class="stat-label">Last Scan</span>
-<strong id="autoLastRun">--</strong>
-</div>
-
-<div class="stat-box">
-<span class="stat-label">Next Scan</span>
-<strong id="autoNextRun">--</strong>
-</div>
-
-</div>
 
 <div style="margin-top:15px">
-<span id="autoTraderMessage" class="card-detail">
-Waiting for automatic trader status...
-</span>
+
+    <span
+        id="autoTraderMessage"
+        class="card-detail">
+        Waiting for automatic trader status...
+    </span>
+
 </div>
+
 
 </section>
 
-<!-- ==================================================
+<!-- ============================================================
      LIVE ORDER BOOK
-================================================== -->
+============================================================ -->
 
 <section class="panel">
 
+
 <div class="panel-header">
 
-<div>
-<div class="eyebrow">LIVE MARKET DATA</div>
-<h2>
-Live Order Book
-<span id="liveCoinLabel">--</span>
-</h2>
+    <div>
+
+        <div class="eyebrow">
+            LIVE MARKET DATA
+        </div>
+
+        <h2>
+
+            Live Order Book
+
+            <span id="liveCoinLabel">
+                --
+            </span>
+
+        </h2>
+
+    </div>
+
+
+    <span
+        id="liveBookStatus"
+        class="badge">
+        OFFLINE
+    </span>
+
 </div>
 
-<div>
-<span id="liveBookStatus" class="badge">
-OFFLINE
-</span>
-</div>
 
-</div>
+
+<!-- ========================================================
+     PRIMARY 200 LEVEL SNAPSHOT
+======================================================== -->
 
 <div class="live-orderbook">
 
-<div class="orderbook-stat">
-<span>Bid Liquidity</span>
-<strong id="liveBidLiquidity">--</strong>
+
+    <div class="orderbook-stat">
+
+        <span>
+            Bid Liquidity
+        </span>
+
+        <strong id="liveBidLiquidity">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="orderbook-stat">
+
+        <span>
+            Ask Liquidity
+        </span>
+
+        <strong id="liveAskLiquidity">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="orderbook-stat">
+
+        <span>
+            Bid Percentage
+        </span>
+
+        <strong id="liveBidPercentage">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="orderbook-stat">
+
+        <span>
+            Ask Percentage
+        </span>
+
+        <strong id="liveAskPercentage">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="orderbook-stat">
+
+        <span>
+            Imbalance
+        </span>
+
+        <strong id="liveImbalance">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="orderbook-stat">
+
+        <span>
+            Bid / Ask Ratio
+        </span>
+
+        <strong id="liveBidAskRatio">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="orderbook-stat">
+
+        <span>
+            Ask / Bid Ratio
+        </span>
+
+        <strong id="liveAskBidRatio">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="orderbook-stat">
+
+        <span>
+            Depth Levels
+        </span>
+
+        <strong id="liveDepth">
+            --
+        </strong>
+
+    </div>
+
+
 </div>
 
-<div class="orderbook-stat">
-<span>Ask Liquidity</span>
-<strong id="liveAskLiquidity">--</strong>
-</div>
 
-<div class="orderbook-stat">
-<span>Bid Percentage</span>
-<strong id="liveBidPercentage">--</strong>
-</div>
 
-<div class="orderbook-stat">
-<span>Ask Percentage</span>
-<strong id="liveAskPercentage">--</strong>
-</div>
+<div
+    id="liveDecision"
+    class="orderbook-direction neutral">
 
-<div class="orderbook-stat">
-<span>Imbalance</span>
-<strong id="liveImbalance">--</strong>
-</div>
-
-<div class="orderbook-stat">
-<span>Bid / Ask Ratio</span>
-<strong id="liveBidAskRatio">--</strong>
-</div>
-
-<div class="orderbook-stat">
-<span>Ask / Bid Ratio</span>
-<strong id="liveAskBidRatio">--</strong>
-</div>
-
-<div class="orderbook-stat">
-<span>Depth Levels</span>
-<strong id="liveDepth">--</strong>
-</div>
+    WAITING FOR ORDER BOOK
 
 </div>
 
-<div id="liveDecision" class="orderbook-direction neutral">
-WAITING FOR ORDER BOOK
+
+
+<!-- ========================================================
+     MULTI DEPTH
+     ONLY 15 / 30 / 60
+======================================================== -->
+
+<div
+    id="multiDepthGrid"
+    class="multi-depth-grid">
+
+
+    <!-- ====================================================
+         15 LEVELS
+    ==================================================== -->
+
+    <div
+        id="depthCard15"
+        class="depth-card no-data">
+
+
+        <div class="depth-header">
+
+            <div class="depth-title">
+                15 Levels
+            </div>
+
+            <span
+                id="depthBadge15"
+                class="depth-badge neutral">
+                NO DATA
+            </span>
+
+        </div>
+
+
+        <div class="depth-metric">
+
+            <span>
+                Imbalance
+            </span>
+
+            <strong id="depth15Imbalance">
+                --
+            </strong>
+
+        </div>
+
+
+        <div class="depth-metric">
+
+            <span>
+                Bid / Ask
+            </span>
+
+            <strong id="depth15BidAsk">
+                --
+            </strong>
+
+        </div>
+
+
+        <div class="depth-metric">
+
+            <span>
+                Ask / Bid
+            </span>
+
+            <strong id="depth15AskBid">
+                --
+            </strong>
+
+        </div>
+
+
+        <div class="depth-test">
+
+            <div class="test-box">
+
+                <span>
+                    Imbalance Test
+                </span>
+
+                <strong id="depth15ImbalanceTest">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="test-box">
+
+                <span>
+                    Ratio Test
+                </span>
+
+                <strong id="depth15RatioTest">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         30 LEVELS
+    ==================================================== -->
+
+    <div
+        id="depthCard30"
+        class="depth-card no-data">
+
+
+        <div class="depth-header">
+
+            <div class="depth-title">
+                30 Levels
+            </div>
+
+            <span
+                id="depthBadge30"
+                class="depth-badge neutral">
+                NO DATA
+            </span>
+
+        </div>
+
+
+        <div class="depth-metric">
+
+            <span>
+                Imbalance
+            </span>
+
+            <strong id="depth30Imbalance">
+                --
+            </strong>
+
+        </div>
+
+
+        <div class="depth-metric">
+
+            <span>
+                Bid / Ask
+            </span>
+
+            <strong id="depth30BidAsk">
+                --
+            </strong>
+
+        </div>
+
+
+        <div class="depth-metric">
+
+            <span>
+                Ask / Bid
+            </span>
+
+            <strong id="depth30AskBid">
+                --
+            </strong>
+
+        </div>
+
+
+        <div class="depth-test">
+
+            <div class="test-box">
+
+                <span>
+                    Imbalance Test
+                </span>
+
+                <strong id="depth30ImbalanceTest">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="test-box">
+
+                <span>
+                    Ratio Test
+                </span>
+
+                <strong id="depth30RatioTest">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         60 LEVELS
+    ==================================================== -->
+
+    <div
+        id="depthCard60"
+        class="depth-card no-data">
+
+
+        <div class="depth-header">
+
+            <div class="depth-title">
+                60 Levels
+            </div>
+
+            <span
+                id="depthBadge60"
+                class="depth-badge neutral">
+                NO DATA
+            </span>
+
+        </div>
+
+
+        <div class="depth-metric">
+
+            <span>
+                Imbalance
+            </span>
+
+            <strong id="depth60Imbalance">
+                --
+            </strong>
+
+        </div>
+
+
+        <div class="depth-metric">
+
+            <span>
+                Bid / Ask
+            </span>
+
+            <strong id="depth60BidAsk">
+                --
+            </strong>
+
+        </div>
+
+
+        <div class="depth-metric">
+
+            <span>
+                Ask / Bid
+            </span>
+
+            <strong id="depth60AskBid">
+                --
+            </strong>
+
+        </div>
+
+
+        <div class="depth-test">
+
+            <div class="test-box">
+
+                <span>
+                    Imbalance Test
+                </span>
+
+                <strong id="depth60ImbalanceTest">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="test-box">
+
+                <span>
+                    Ratio Test
+                </span>
+
+                <strong id="depth60RatioTest">
+                    --
+                </strong>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
 </div>
+
+
+
+<!-- ========================================================
+     MULTI DEPTH CONFIRMATION
+======================================================== -->
+
+<div
+    id="multiConfirmation"
+    class="multi-confirmation fail">
+
+
+    <div class="multi-confirmation-title">
+        MULTI-DEPTH CONFIRMATION
+    </div>
+
+
+    <div
+        id="multiConfirmationResult"
+        class="multi-confirmation-result fail">
+        NO DATA
+    </div>
+
+
+    <div
+        id="multiConfirmationDetail"
+        class="multi-confirmation-detail">
+
+        Requires 15 + 30 + 60 to pass.
+
+    </div>
+
+
+</div>
+
+
 
 <div class="orderbook-time">
-Last order-book update:
-<strong id="liveBookUpdate">--</strong>
+
+    Last order-book update:
+
+    <strong id="liveBookUpdate">
+        --
+    </strong>
+
 </div>
+
 
 </section>
 
-<!-- ==================================================
+<!-- ============================================================
      ORDER FLOW STATISTICS
-================================================== -->
+============================================================ -->
 
 <section class="panel">
 
+
 <div class="panel-header">
 
-<div>
-<div class="eyebrow">LIVE SESSION DATA</div>
-<h2>Order Flow Statistics</h2>
+    <div>
+
+        <div class="eyebrow">
+            LIVE SESSION DATA
+        </div>
+
+        <h2>
+            Order Flow Statistics
+        </h2>
+
+    </div>
+
+
+    <button
+        class="button danger"
+        onclick="resetStatistics()">
+
+        Reset Statistics
+
+    </button>
+
 </div>
 
-<button class="button danger" onclick="resetStatistics()">
-Reset Statistics
-</button>
 
-</div>
 
 <div class="stats-grid">
 
-<div class="stat-box">
-<span class="stat-label">Total Checks</span>
-<strong id="totalChecks">0</strong>
+
+    <div class="stat-box">
+
+        <span class="stat-label">
+            Total Checks
+        </span>
+
+        <strong id="totalChecks">
+            0
+        </strong>
+
+    </div>
+
+
+    <div class="stat-box accepted">
+
+        <span class="stat-label">
+            Accepted
+        </span>
+
+        <strong id="accepted">
+            0
+        </strong>
+
+    </div>
+
+
+    <div class="stat-box rejected">
+
+        <span class="stat-label">
+            Rejected
+        </span>
+
+        <strong id="rejected">
+            0
+        </strong>
+
+    </div>
+
+
+    <div class="stat-box">
+
+        <span class="stat-label">
+            Acceptance Rate
+        </span>
+
+        <strong id="acceptanceRate">
+            0%
+        </strong>
+
+    </div>
+
+
+    <div class="stat-box">
+
+        <span class="stat-label">
+            Rejection Rate
+        </span>
+
+        <strong id="rejectionRate">
+            0%
+        </strong>
+
+    </div>
+
+
 </div>
 
-<div class="stat-box accepted">
-<span class="stat-label">Accepted</span>
-<strong id="accepted">0</strong>
-</div>
 
-<div class="stat-box rejected">
-<span class="stat-label">Rejected</span>
-<strong id="rejected">0</strong>
-</div>
-
-<div class="stat-box">
-<span class="stat-label">Acceptance Rate</span>
-<strong id="acceptanceRate">0%</strong>
-</div>
-
-<div class="stat-box">
-<span class="stat-label">Rejection Rate</span>
-<strong id="rejectionRate">0%</strong>
-</div>
-
-</div>
 
 <div class="rate-section">
 
-<div class="rate-header">
-<span>Acceptance / Rejection</span>
-<span id="rateText">0% / 0%</span>
+
+    <div class="rate-header">
+
+        <span>
+            Acceptance / Rejection
+        </span>
+
+        <span id="rateText">
+            0% / 0%
+        </span>
+
+    </div>
+
+
+    <div class="rate-bar">
+
+        <div
+            id="acceptanceBar"
+            class="acceptance-bar">
+        </div>
+
+    </div>
+
+
 </div>
 
-<div class="rate-bar">
-<div id="acceptanceBar" class="acceptance-bar"></div>
-</div>
-
-</div>
 
 </section>
 
-<!-- ==================================================
+<!-- ============================================================
      LONG / SHORT
-================================================== -->
+============================================================ -->
 
 <section class="two-columns">
 
-<div class="panel">
-
-<div class="panel-header">
-<h2>Long Signals</h2>
-</div>
-
-<div class="signal-stats">
-
-<div>
-<span>Total</span>
-<strong id="longTotal">0</strong>
-</div>
-
-<div>
-<span>Accepted</span>
-<strong id="longAccepted" class="text-success">0</strong>
-</div>
-
-<div>
-<span>Rejected</span>
-<strong id="longRejected" class="text-danger">0</strong>
-</div>
-
-<div>
-<span>Acceptance</span>
-<strong id="longRate">0%</strong>
-</div>
-
-</div>
-
-</div>
 
 <div class="panel">
 
-<div class="panel-header">
-<h2>Short Signals</h2>
+    <div class="panel-header">
+
+        <h2>
+            Long Signals
+        </h2>
+
+    </div>
+
+
+    <div class="signal-stats">
+
+
+        <div>
+
+            <span>
+                Total
+            </span>
+
+            <strong id="longTotal">
+                0
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span>
+                Accepted
+            </span>
+
+            <strong
+                id="longAccepted"
+                class="text-success">
+                0
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span>
+                Rejected
+            </span>
+
+            <strong
+                id="longRejected"
+                class="text-danger">
+                0
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span>
+                Acceptance
+            </span>
+
+            <strong id="longRate">
+                0%
+            </strong>
+
+        </div>
+
+
+    </div>
+
 </div>
 
-<div class="signal-stats">
 
-<div>
-<span>Total</span>
-<strong id="shortTotal">0</strong>
+
+<div class="panel">
+
+    <div class="panel-header">
+
+        <h2>
+            Short Signals
+        </h2>
+
+    </div>
+
+
+    <div class="signal-stats">
+
+
+        <div>
+
+            <span>
+                Total
+            </span>
+
+            <strong id="shortTotal">
+                0
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span>
+                Accepted
+            </span>
+
+            <strong
+                id="shortAccepted"
+                class="text-success">
+                0
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span>
+                Rejected
+            </span>
+
+            <strong
+                id="shortRejected"
+                class="text-danger">
+                0
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span>
+                Acceptance
+            </span>
+
+            <strong id="shortRate">
+                0%
+            </strong>
+
+        </div>
+
+
+    </div>
+
 </div>
 
-<div>
-<span>Accepted</span>
-<strong id="shortAccepted" class="text-success">0</strong>
-</div>
-
-<div>
-<span>Rejected</span>
-<strong id="shortRejected" class="text-danger">0</strong>
-</div>
-
-<div>
-<span>Acceptance</span>
-<strong id="shortRate">0%</strong>
-</div>
-
-</div>
-
-</div>
 
 </section>
 
-<!-- ==================================================
-     PER COIN ORDER FLOW
-================================================== -->
+<!-- ============================================================
+     PER COIN
+============================================================ -->
 
 <section class="panel">
 
+
 <div class="panel-header">
 
-<div>
-<div class="eyebrow">LIVE SESSION DATA</div>
-<h2>Per-Coin Order Flow</h2>
+    <div>
+
+        <div class="eyebrow">
+            LIVE SESSION DATA
+        </div>
+
+        <h2>
+            Per-Coin Order Flow
+        </h2>
+
+    </div>
+
+
+    <div class="table-actions">
+
+        <input
+            id="coinSearch"
+            class="coin-search"
+            type="search"
+            placeholder="Search coin..."
+            autocomplete="off">
+
+    </div>
+
 </div>
 
-<div class="table-actions">
 
-<input
-id="coinSearch"
-class="coin-search"
-type="search"
-placeholder="Search coin..."
-autocomplete="off">
-
-</div>
-
-</div>
 
 <div class="table-wrap">
 
-<table class="orderflow-table">
 
-<thead>
-<tr>
-<th>Coin</th>
-<th>Long ✓</th>
-<th>Long ✗</th>
-<th>Short ✓</th>
-<th>Short ✗</th>
-<th>Total</th>
-</tr>
-</thead>
+    <table class="orderflow-table">
 
-<tbody id="orderFlowByCoin">
 
-<tr>
-<td colspan="6" class="table-empty">
-Waiting for order-flow data...
-</td>
-</tr>
+        <thead>
 
-</tbody>
+            <tr>
 
-</table>
+                <th>
+                    Coin
+                </th>
+
+                <th>
+                    Long ✓
+                </th>
+
+                <th>
+                    Long ✗
+                </th>
+
+                <th>
+                    Short ✓
+                </th>
+
+                <th>
+                    Short ✗
+                </th>
+
+                <th>
+                    Total
+                </th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody id="orderFlowByCoin">
+
+            <tr>
+
+                <td
+                    colspan="6"
+                    class="table-empty">
+
+                    Waiting for order-flow data...
+
+                </td>
+
+            </tr>
+
+        </tbody>
+
+
+    </table>
+
 
 </div>
 
+
 </section>
 
-<!-- ==================================================
-     ORDER BOOK CONFIGURATION
-================================================== -->
+<!-- ============================================================
+     ORDER BOOK CONFIG
+============================================================ -->
 
 <section class="panel">
 
+
 <div class="panel-header">
 
-<div>
-<div class="eyebrow">FILTER CONFIGURATION</div>
-<h2>Order Book Filter</h2>
+    <div>
+
+        <div class="eyebrow">
+            FILTER CONFIGURATION
+        </div>
+
+        <h2>
+            Order Book Filter
+        </h2>
+
+    </div>
+
+
+    <span
+        id="filterStatus"
+        class="badge">
+
+        --------------
+
+    </span>
+
 </div>
 
-<span id="filterStatus" class="badge">--</span>
 
-</div>
 
 <div class="config-grid">
 
-<div class="config-item">
-<span>Depth</span>
-<strong id="depth">--</strong>
+
+    <div class="config-item">
+
+        <span>
+            API Request Depth
+        </span>
+
+        <strong id="apiRequestDepth">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Confirmation Depths
+        </span>
+
+        <strong id="confirmationDepths">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Comparison Depths
+        </span>
+
+        <strong id="comparisonDepths">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Long Min Imbalance
+        </span>
+
+        <strong id="longImbalance">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Short Max Imbalance
+        </span>
+
+        <strong id="shortImbalance">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Min Bid / Ask
+        </span>
+
+        <strong id="bidAskRatio">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Min Ask / Bid
+        </span>
+
+        <strong id="askBidRatio">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Confirmation
+        </span>
+
+        <strong id="confirmationMode">
+            ALL DEPTHS
+        </strong>
+
+    </div>
+
+
 </div>
 
-<div class="config-item">
-<span>Long Min Imbalance</span>
-<strong id="longImbalance">--</strong>
-</div>
-
-<div class="config-item">
-<span>Short Max Imbalance</span>
-<strong id="shortImbalance">--</strong>
-</div>
-
-<div class="config-item">
-<span>Min Bid / Ask</span>
-<strong id="bidAskRatio">--</strong>
-</div>
-
-<div class="config-item">
-<span>Min Ask / Bid</span>
-<strong id="askBidRatio">--</strong>
-</div>
-
-</div>
 
 </section>
 
-<!-- ==================================================
+<!-- ============================================================
      RISK
-================================================== -->
+============================================================ -->
 
 <section class="panel">
 
+
 <div class="panel-header">
 
-<div>
-<div class="eyebrow">POSITION SETTINGS</div>
-<h2>Risk Configuration</h2>
-</div>
+    <div>
+
+        <div class="eyebrow">
+            POSITION SETTINGS
+        </div>
+
+        <h2>
+            Risk Configuration
+        </h2>
+
+    </div>
 
 </div>
+
+
 
 <div class="config-grid">
 
-<div class="config-item">
-<span>Margin</span>
-<strong id="margin">--</strong>
+
+    <div class="config-item">
+
+        <span>
+            Margin
+        </span>
+
+        <strong id="margin">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Leverage
+        </span>
+
+        <strong id="leverage">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Margin Mode
+        </span>
+
+        <strong id="marginMode">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Trading
+        </span>
+
+        <strong id="tradingEnabled">
+            --
+        </strong>
+
+    </div>
+
+
+    <div class="config-item">
+
+        <span>
+            Reversal
+        </span>
+
+        <strong id="reversal">
+            --
+        </strong>
+
+    </div>
+
+
 </div>
 
-<div class="config-item">
-<span>Leverage</span>
-<strong id="leverage">--</strong>
-</div>
-
-<div class="config-item">
-<span>Margin Mode</span>
-<strong id="marginMode">--</strong>
-</div>
-
-<div class="config-item">
-<span>Trading</span>
-<strong id="tradingEnabled">--</strong>
-</div>
-
-<div class="config-item">
-<span>Reversal</span>
-<strong id="reversal">--</strong>
-</div>
-
-</div>
 
 </section>
 
-<!-- ==================================================
+<!-- ============================================================
      SYMBOLS
-================================================== -->
+============================================================ -->
 
 <section class="panel">
 
+
 <div class="panel-header">
 
-<div>
-<div class="eyebrow">WEEX MARKET</div>
-<h2>Available Symbols</h2>
+    <div>
+
+        <div class="eyebrow">
+            WEEX MARKET
+        </div>
+
+        <h2>
+            Available Symbols
+        </h2>
+
+    </div>
+
+
+    <span
+        id="symbolsLoaded"
+        class="badge">
+        0
+    </span>
+
 </div>
 
-<span id="symbolsLoaded" class="badge">0</span>
+
+<div
+    id="symbols"
+    class="symbols">
+
+    Loading...
 
 </div>
 
-<div id="symbols" class="symbols">
-Loading...
-</div>
 
 </section>
+
+<!-- ============================================================
+     FOOTER
+============================================================ -->
 
 <footer>
 
-<span>WEEX Trading Bot V3</span>
 
 <span>
-Last update:
-<strong id="lastUpdate">--</strong>
+    WEEX Trading Bot V3
 </span>
+
+<span>
+
+    Last update:
+
+    <strong id="lastUpdate">
+        --
+    </strong>
+
+</span>
+
 
 </footer>
 
@@ -602,16 +1495,41 @@ Last update:
 
 <script>
 
+/* ============================================================
+   GLOBAL STATE
+============================================================ */
+
 let latestPerCoinStats = {};
+
 let availableSymbols = [];
+
 let selectedLiveCoin = "";
 
-const DASHBOARD_REFRESH_MS = 60 * 60 * 1000;
-const LIVE_ORDERBOOK_REFRESH_MS = 60 * 60 * 1000;
+let liveOrderBookLoading = false;
+
+let currentLiveOrderBookData = null;
+
 
 
 /* ============================================================
-   BASIC HELPERS
+   REFRESH SETTINGS
+============================================================ */
+
+const DASHBOARD_REFRESH_MS =
+    60 * 60 * 1000;
+
+
+const LIVE_ORDERBOOK_REFRESH_MS =
+    60 * 1000;
+
+
+const AUTOMATIC_STATUS_REFRESH_MS =
+    60 * 1000;
+
+
+
+/* ============================================================
+   HELPERS
 ============================================================ */
 
 function setText(id,value){
@@ -620,9 +1538,12 @@ function setText(id,value){
         document.getElementById(id);
 
     if(element){
+
         element.textContent =
             value ?? "--";
+
     }
+
 }
 
 
@@ -632,10 +1553,31 @@ function formatPercent(value){
         Number(value);
 
     if(!Number.isFinite(number)){
-        return "0%";
+
+        return "--";
+
+    }
+
+    return (
+        number * 100
+    ).toFixed(2) + "%";
+
+}
+
+
+function formatPercentAlready(value){
+
+    const number =
+        Number(value);
+
+    if(!Number.isFinite(number)){
+
+        return "--";
+
     }
 
     return number.toFixed(2) + "%";
+
 }
 
 
@@ -645,28 +1587,73 @@ function formatNumber(value){
         Number(value);
 
     if(!Number.isFinite(number)){
+
         return "--";
+
     }
 
     return number.toFixed(4);
+
 }
 
 
-function calculateRate(accepted,total){
+function calculateRate(
+    accepted,
+    total
+){
 
-    if(!total || total <= 0){
+    if(
+        !total ||
+        total <= 0
+    ){
+
         return 0;
+
     }
 
-    return accepted / total * 100;
+    return (
+        accepted /
+        total *
+        100
+    );
+
 }
+
+
+function formatDate(value){
+
+    if(!value){
+
+        return "--";
+
+    }
+
+    const date =
+        new Date(value);
+
+    if(
+        Number.isNaN(
+            date.getTime()
+        )
+    ){
+
+        return "--";
+
+    }
+
+    return date.toLocaleString();
+
+}
+
 
 
 /* ============================================================
    CONNECTION
 ============================================================ */
 
-function setConnection(connected){
+function setConnection(
+    connected
+){
 
     const element =
         document.getElementById(
@@ -674,8 +1661,11 @@ function setConnection(connected){
         );
 
     if(!element){
+
         return;
+
     }
+
 
     if(connected){
 
@@ -692,899 +1682,1489 @@ function setConnection(connected){
 
         element.className =
             "connection disconnected";
+
     }
+
 }
 
 
-// ============================================================
-// AUTOMATIC TRADER
-// ============================================================
 
-let automaticTraderLoading = false;
+/* ============================================================
+   SYMBOL SELECTOR
+============================================================ */
 
-
-// ============================================================
-// FORMAT DATE
-// ============================================================
-
-function formatAutoDate(
-    value
-) {
-
-    if (!value) {
-        return "--";
-    }
-
-    const date =
-        new Date(value);
-
-    if (
-        Number.isNaN(
-            date.getTime()
-        )
-    ) {
-        return "--";
-    }
-
-    return date.toLocaleString();
-}
-
-
-// ============================================================
-// SET AUTO MESSAGE
-// ============================================================
-
-function setAutoTraderMessage(
-    message
-) {
-
-    const element =
-        document.getElementById(
-            "autoTraderMessage"
-        );
-
-    if (element) {
-
-        element.textContent =
-            message;
-    }
-}
-
-
-// ============================================================
-// SELECT AUTOMATIC COIN
-// ============================================================
-
-async function selectAutomaticCoin() {
+function updateCoinSelector(
+    symbols
+){
 
     const select =
         document.getElementById(
             "autoCoin"
         );
 
-
-    if (!select) {
-        return;
-    }
-
-
-    const symbol =
-        String(
-            select.value || ""
-        )
-            .trim()
-            .toUpperCase();
-
-
-    if (!symbol) {
-
-        setAutoTraderMessage(
-            "Please select a coin."
-        );
+    if(!select){
 
         return;
+
     }
 
 
-    const button =
-        document.getElementById(
-            "autoSelectButton"
-        );
+    if(
+        !Array.isArray(symbols) ||
+        symbols.length === 0
+    ){
 
+        select.innerHTML =
+            `<option value="">
+                No coins available
+            </option>`;
 
-    if (button) {
+        return;
 
-        button.disabled =
-            true;
-
-        button.textContent =
-            "Selecting...";
     }
 
 
-    try {
-
-        console.log(
-            "SELECTED COIN:",
-            symbol
-        );
-
-        console.log(
-            "AUTOMATIC TRADER SELECTION:",
-            symbol
-        );
+    availableSymbols =
+        symbols.slice();
 
 
-        const response =
-            await fetch(
-                "/automatic-trader/select",
-                {
-
-                    method:
-                        "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body:
-                        JSON.stringify({
-                            symbol
-                        }),
-
-                    cache:
-                        "no-store"
-                }
-            );
+    const oldValue =
+        selectedLiveCoin ||
+        select.value ||
+        "";
 
 
-        const data =
-            await response.json();
+    select.innerHTML =
+        symbols
+        .map(symbol => {
+
+            const safe =
+                String(symbol)
+                .replace(
+                    /"/g,
+                    "&quot;"
+                );
+
+            return `
+                <option value="${safe}">
+                    ${safe}
+                </option>
+            `;
+
+        })
+        .join("");
 
 
-        if (
-            !response.ok ||
-            !data.success
-        ) {
-
-            throw new Error(
-                data.error ||
-                `Selection failed: ${response.status}`
-            );
-        }
+    const selected =
+        symbols.find(
+            symbol =>
+                String(symbol).toUpperCase() ===
+                String(oldValue).toUpperCase()
+        ) ||
+        symbols[0];
 
 
-        document.getElementById(
-            "selectedAutoCoin"
-        ).textContent =
-            data.symbol;
+    select.value =
+        selected;
 
 
-        setAutoTraderMessage(
-            `Automatic trading is now locked to ${data.symbol}.`
-        );
+    selectedLiveCoin =
+        selected;
 
 
-        console.log(
-            "AUTOMATIC TRADER SELECTED:",
-            data.symbol
-        );
+    setText(
+        "liveCoinLabel",
+        selected
+    );
 
-
-        // Immediately refresh position.
-        await loadAutomaticPositions();
-
-
-        // Refresh status.
-        await loadAutomaticTraderStatus();
-
-
-    } catch (error) {
-
-        console.error(
-            "AUTOMATIC COIN SELECTION ERROR:",
-            error
-        );
-
-
-        setAutoTraderMessage(
-            `Selection error: ${error.message}`
-        );
-
-
-    } finally {
-
-        if (button) {
-
-            button.disabled =
-                false;
-
-            button.textContent =
-                "✓ Select Coin";
-        }
-    }
 }
 
 
-// ============================================================
-// FORCE CHECK
-// ============================================================
 
-async function runAutomaticTrader() {
+/* ============================================================
+   SYMBOL DISPLAY
+============================================================ */
 
-    if (
-        automaticTraderLoading
-    ) {
-        return;
-    }
+function updateSymbols(
+    symbols
+){
 
-
-    const select =
+    const container =
         document.getElementById(
-            "autoCoin"
+            "symbols"
         );
 
-
-    if (!select) {
-        return;
-    }
-
-
-    const symbol =
-        String(
-            select.value || ""
-        )
-            .trim()
-            .toUpperCase();
-
-
-    if (!symbol) {
-
-        alert(
-            "Please select a coin first."
-        );
+    if(!container){
 
         return;
+
     }
 
 
-    automaticTraderLoading =
-        true;
+    if(
+        !Array.isArray(symbols) ||
+        symbols.length === 0
+    ){
 
+        container.innerHTML =
+            "<span>No symbols available.</span>";
 
-    const button =
-        document.getElementById(
-            "autoRunButton"
+        setText(
+            "symbolsLoaded",
+            "0"
         );
 
+        return;
 
-    if (button) {
-
-        button.disabled =
-            true;
-
-        button.textContent =
-            "Checking...";
     }
 
 
-    setAutoTraderMessage(
-        `Force checking ${symbol}...`
+    setText(
+        "symbolsLoaded",
+        symbols.length
     );
 
 
-    console.log(
-        "MANUAL AUTO TRADER REQUEST:",
+    container.innerHTML =
+        symbols
+        .map(
+            symbol =>
+                `<span class="symbol">
+                    ${symbol}
+                </span>`
+        )
+        .join("");
+
+}
+
+
+
+/* ============================================================
+   RESET LIVE ORDER BOOK DISPLAY
+============================================================ */
+
+function resetLiveOrderBookDisplay(){
+
+    const status =
+        document.getElementById(
+            "liveBookStatus"
+        );
+
+
+    if(status){
+
+        status.textContent =
+            "LOADING";
+
+        status.className =
+            "badge";
+
+    }
+
+
+    setText(
+        "liveBidLiquidity",
+        "--"
+    );
+
+    setText(
+        "liveAskLiquidity",
+        "--"
+    );
+
+    setText(
+        "liveBidPercentage",
+        "--"
+    );
+
+    setText(
+        "liveAskPercentage",
+        "--"
+    );
+
+    setText(
+        "liveImbalance",
+        "--"
+    );
+
+    setText(
+        "liveBidAskRatio",
+        "--"
+    );
+
+    setText(
+        "liveAskBidRatio",
+        "--"
+    );
+
+    setText(
+        "liveDepth",
+        "--"
+    );
+
+    setText(
+        "liveBookUpdate",
+        "--"
+    );
+
+
+    const decision =
+        document.getElementById(
+            "liveDecision"
+        );
+
+
+    if(decision){
+
+        decision.textContent =
+            "LOADING ORDER BOOK";
+
+        decision.className =
+            "orderbook-direction neutral";
+
+    }
+
+
+    updateMultiDepth(
+        null,
+        ""
+    );
+
+}
+
+
+
+/* ============================================================
+   ORDER BOOK DEPTH CARD
+============================================================ */
+
+function updateDepthCard(
+    depth,
+    result
+){
+
+    const card =
+        document.getElementById(
+            `depthCard${depth}`
+        );
+
+
+    const badge =
+        document.getElementById(
+            `depthBadge${depth}`
+        );
+
+
+    if(
+        !card ||
+        !badge
+    ){
+
+        return;
+
+    }
+
+
+    const imbalance =
+        document.getElementById(
+            `depth${depth}Imbalance`
+        );
+
+
+    const bidAsk =
+        document.getElementById(
+            `depth${depth}BidAsk`
+        );
+
+
+    const askBid =
+        document.getElementById(
+            `depth${depth}AskBid`
+        );
+
+
+    const imbalanceTest =
+        document.getElementById(
+            `depth${depth}ImbalanceTest`
+        );
+
+
+    const ratioTest =
+        document.getElementById(
+            `depth${depth}RatioTest`
+        );
+
+
+
+    /* --------------------------------------------------------
+       NO DATA
+    -------------------------------------------------------- */
+
+    if(
+        !result ||
+        result.error
+    ){
+
+        card.className =
+            "depth-card no-data";
+
+        badge.className =
+            "depth-badge neutral";
+
+        badge.textContent =
+            "NO DATA";
+
+
+        if(imbalance){
+
+            imbalance.textContent =
+                "--";
+
+        }
+
+
+        if(bidAsk){
+
+            bidAsk.textContent =
+                "--";
+
+        }
+
+
+        if(askBid){
+
+            askBid.textContent =
+                "--";
+
+        }
+
+
+        if(imbalanceTest){
+
+            imbalanceTest.textContent =
+                "--";
+
+            imbalanceTest.className =
+                "";
+
+        }
+
+
+        if(ratioTest){
+
+            ratioTest.textContent =
+                "--";
+
+            ratioTest.className =
+                "";
+
+        }
+
+
+        return;
+
+    }
+
+
+
+    /* --------------------------------------------------------
+       VALUES
+    -------------------------------------------------------- */
+
+    if(imbalance){
+
+        imbalance.textContent =
+            formatNumber(
+                result.imbalance
+            );
+
+    }
+
+
+    if(bidAsk){
+
+        bidAsk.textContent =
+            formatNumber(
+                result.bidAskRatio
+            );
+
+    }
+
+
+    if(askBid){
+
+        askBid.textContent =
+            formatNumber(
+                result.askBidRatio
+            );
+
+    }
+
+
+    if(imbalanceTest){
+
+        imbalanceTest.textContent =
+            result.imbalancePass
+                ? "PASS"
+                : "FAIL";
+
+        imbalanceTest.className =
+            result.imbalancePass
+                ? "test-pass"
+                : "test-fail";
+
+    }
+
+
+    if(ratioTest){
+
+        ratioTest.textContent =
+            result.ratioPass
+                ? "PASS"
+                : "FAIL";
+
+        ratioTest.className =
+            result.ratioPass
+                ? "test-pass"
+                : "test-fail";
+
+    }
+
+
+
+    /* --------------------------------------------------------
+       FINAL DEPTH STATUS
+    -------------------------------------------------------- */
+
+    if(result.filterPass){
+
+        card.className =
+            "depth-card pass";
+
+        badge.className =
+            "depth-badge pass";
+
+        badge.textContent =
+            "PASS";
+
+    }else{
+
+        card.className =
+            "depth-card fail";
+
+        badge.className =
+            "depth-badge fail";
+
+        badge.textContent =
+            "BLOCKED";
+
+    }
+
+}
+
+
+
+/* ============================================================
+   MULTI DEPTH CONFIRMATION
+   15 + 30 + 60 ONLY
+============================================================ */
+
+function updateMultiDepth(
+    multiDepth,
+    direction
+){
+
+    const dashboard =
+        currentLiveOrderBookData?.dashboard ||
+        {};
+
+
+    const selectedDirection =
+        String(
+            direction ||
+            "LONG"
+        ).toUpperCase();
+
+
+
+    /* --------------------------------------------------------
+       GET DEPTH RESULT
+    -------------------------------------------------------- */
+
+    function getDepthResult(depth){
+
+        const depthData =
+            dashboard?.[
+                `depth${depth}`
+            ] || {};
+
+
+        const result =
+            selectedDirection === "SHORT"
+                ? depthData.short
+                : depthData.long;
+
+
+        return result || null;
+
+    }
+
+
+
+    /* --------------------------------------------------------
+       UPDATE 15 / 30 / 60
+    -------------------------------------------------------- */
+
+    for(
+        const depth of
+        [15,30,60]
+    ){
+
+        updateDepthCard(
+            depth,
+            getDepthResult(depth)
+        );
+
+    }
+
+
+
+    /* --------------------------------------------------------
+       CONFIRMATION ELEMENTS
+    -------------------------------------------------------- */
+
+    const confirmation =
+        document.getElementById(
+            "multiConfirmation"
+        );
+
+
+    const resultElement =
+        document.getElementById(
+            "multiConfirmationResult"
+        );
+
+
+    const detail =
+        document.getElementById(
+            "multiConfirmationDetail"
+        );
+
+
+    if(!confirmation){
+
+        return;
+
+    }
+
+
+
+    /* --------------------------------------------------------
+       BACKEND CONFIRMATION
+    -------------------------------------------------------- */
+
+    let passed;
+
+
+    if(
+        typeof
+        multiDepth?.confirmationPassed
+        === "boolean"
+    ){
+
+        passed =
+            multiDepth.confirmationPassed;
+
+    }else{
+
+        const depth15 =
+            getDepthResult(15);
+
+        const depth30 =
+            getDepthResult(30);
+
+        const depth60 =
+            getDepthResult(60);
+
+
+        passed =
+            depth15?.filterPass === true &&
+            depth30?.filterPass === true &&
+            depth60?.filterPass === true;
+
+    }
+
+
+
+    /* --------------------------------------------------------
+       RESULT
+    -------------------------------------------------------- */
+
+    if(passed){
+
+        confirmation.className =
+            "multi-confirmation pass";
+
+
+        if(resultElement){
+
+            resultElement.className =
+                "multi-confirmation-result pass";
+
+            resultElement.textContent =
+                "PASSED";
+
+        }
+
+    }else{
+
+        confirmation.className =
+            "multi-confirmation fail";
+
+
+        if(resultElement){
+
+            resultElement.className =
+                "multi-confirmation-result fail";
+
+            resultElement.textContent =
+                "BLOCKED";
+
+        }
+
+    }
+
+
+
+    /* --------------------------------------------------------
+       DETAIL
+    -------------------------------------------------------- */
+
+    if(detail){
+
+        const depthResults =
+            [15,30,60]
+            .map(
+                depth =>
+                    getDepthResult(depth)
+            );
+
+
+        const passedDepths =
+            depthResults.filter(
+                result =>
+                    result?.filterPass === true
+            ).length;
+
+
+        const failedDepths =
+            depthResults.filter(
+                result =>
+                    result &&
+                    result.filterPass !== true
+            ).length;
+
+
+        detail.textContent =
+            `Requires 15 + 30 + 60 to pass. ` +
+            `Passed: ${passedDepths} | ` +
+            `Failed: ${failedDepths}`;
+
+    }
+
+}
+
+
+
+/* ============================================================
+   LIVE ORDER BOOK
+============================================================ */
+
+
+function updateLiveOrderBook(
+    data
+){
+
+    if(!data){
+
+        return;
+
+    }
+
+
+    currentLiveOrderBookData =
+        data;
+
+
+    const book =
+        data.orderBook ||
+        data;
+
+
+    const symbol =
+        data.symbol ||
+        book.symbol ||
+        selectedLiveCoin;
+
+
+    setText(
+        "liveCoinLabel",
         symbol
     );
 
 
-    try {
 
-        // ----------------------------------------------------
-        // IMPORTANT:
-        //
-        // Send the selected symbol directly to backend.
-        //
-        // This prevents the backend from falling back to
-        // 1000BONKUSDT or any other default.
-        //
-        // ----------------------------------------------------
+    /* --------------------------------------------------------
+       PRIMARY VALUES
+    -------------------------------------------------------- */
+
+    setText(
+        "liveBidLiquidity",
+        formatNumber(
+            book.bidLiquidity
+        )
+    );
+
+
+    setText(
+        "liveAskLiquidity",
+        formatNumber(
+            book.askLiquidity
+        )
+    );
+
+
+    setText(
+        "liveBidPercentage",
+        formatPercent(
+            book.bidPercentage
+        )
+    );
+
+
+    setText(
+        "liveAskPercentage",
+        formatPercent(
+            book.askPercentage
+        )
+    );
+
+
+    setText(
+        "liveImbalance",
+        formatNumber(
+            book.imbalance
+        )
+    );
+
+
+    setText(
+        "liveBidAskRatio",
+        formatNumber(
+            book.bidAskRatio
+        )
+    );
+
+
+    setText(
+        "liveAskBidRatio",
+        formatNumber(
+            book.askBidRatio
+        )
+    );
+
+
+    setText(
+        "liveDepth",
+        book.depth ||
+        book.requestedDepth ||
+        book.depthLevels ||
+        data.requestedDepth ||
+        200
+    );
+
+
+
+    /* --------------------------------------------------------
+       MULTI DEPTH
+    -------------------------------------------------------- */
+
+    const multiDepth =
+        data.multiDepth ||
+        book.multiDepth ||
+        data.dashboard?.multiDepth ||
+        null;
+
+
+    const direction =
+        String(
+            data.decision ||
+            data.direction ||
+            book.direction ||
+            ""
+        )
+        .trim()
+        .toUpperCase();
+
+
+    updateMultiDepth(
+        multiDepth,
+        direction
+    );
+
+
+
+    /* --------------------------------------------------------
+       FINAL DECISION
+       --------------------------------------------------------
+       
+       IMPORTANT:
+       
+       The BACKEND already calculates:
+       
+           15 + 30 + 60
+           2 OF 3 REQUIRED
+       
+       Therefore the dashboard MUST NOT recalculate the
+       decision from the primary 15-level order-book values.
+       
+       Use the backend decision directly.
+       
+       -------------------------------------------------------- */
+
+    const decision =
+        document.getElementById(
+            "liveDecision"
+        );
+
+
+    if(decision){
+
+        const backendDecision =
+            String(
+                data.decision ||
+                data.dashboard?.decision ||
+                data.direction ||
+                ""
+            )
+            .trim()
+            .toUpperCase();
+
+
+        if(
+            backendDecision === "LONG"
+        ){
+
+            decision.textContent =
+                "LONG";
+
+            decision.className =
+                "orderbook-direction long";
+
+
+        }else if(
+            backendDecision === "SHORT"
+        ){
+
+            decision.textContent =
+                "SHORT";
+
+            decision.className =
+                "orderbook-direction short";
+
+
+        }else{
+
+            decision.textContent =
+                "NEUTRAL";
+
+            decision.className =
+                "orderbook-direction neutral";
+        }
+    }
+
+
+
+    /* --------------------------------------------------------
+       STATUS
+    -------------------------------------------------------- */
+
+    const status =
+        document.getElementById(
+            "liveBookStatus"
+        );
+
+
+    if(status){
+
+        const hasBookData =
+            Number.isFinite(
+                Number(
+                    book.bidLiquidity
+                )
+            ) &&
+            Number.isFinite(
+                Number(
+                    book.askLiquidity
+                )
+            ) &&
+            Number.isFinite(
+                Number(
+                    book.imbalance
+                )
+            );
+
+
+        if(hasBookData){
+
+            status.textContent =
+                "LIVE";
+
+            status.className =
+                "badge success";
+
+        }else{
+
+            status.textContent =
+                "NO DATA";
+
+            status.className =
+                "badge";
+        }
+    }
+
+
+
+    /* --------------------------------------------------------
+       UPDATE TIME
+    -------------------------------------------------------- */
+
+    setText(
+        "liveBookUpdate",
+        new Date().toLocaleString()
+    );
+
+}
+
+
+
+
+/* ============================================================
+   LOAD LIVE ORDER BOOK
+============================================================ */
+
+async function loadLiveOrderBook(){
+
+    if(liveOrderBookLoading){
+
+        return;
+
+    }
+
+
+    liveOrderBookLoading =
+        true;
+
+
+    try{
+
+        const select =
+            document.getElementById(
+                "autoCoin"
+            );
+
+
+        const symbol =
+            selectedLiveCoin ||
+            select?.value;
+
+
+        if(!symbol){
+
+            console.warn(
+                "[LIVE ORDER BOOK] No symbol selected."
+            );
+
+            return;
+
+        }
+
+
+        const normalizedSymbol =
+            String(
+                symbol
+            )
+            .trim()
+            .toUpperCase();
+
+
+
+        /* ----------------------------------------------------
+           REQUEST
+        ---------------------------------------------------- */
 
         const response =
             await fetch(
-                "/automatic-trader/run",
+                `/live-orderbook?symbol=${encodeURIComponent(normalizedSymbol)}`,
                 {
-
-                    method:
-                        "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body:
-                        JSON.stringify({
-                            symbol
-                        }),
-
-                    cache:
-                        "no-store"
+                    cache:"no-store"
                 }
             );
 
+
+        if(!response.ok){
+
+            let errorText =
+                "";
+
+
+            try{
+
+                errorText =
+                    await response.text();
+
+            }catch(readError){
+
+                console.error(
+                    "[LIVE ORDER BOOK] Error reading response:",
+                    readError
+                );
+
+            }
+
+
+            throw new Error(
+                `Live order book HTTP ${response.status}: ${errorText}`
+            );
+
+        }
+
+
+
+        /* ----------------------------------------------------
+           JSON
+        ---------------------------------------------------- */
 
         const data =
             await response.json();
 
 
-        if (
-            !response.ok ||
-            !data.success
-        ) {
+
+        /* ----------------------------------------------------
+           BACKEND FAILURE
+        ---------------------------------------------------- */
+
+        if(!data.success){
 
             throw new Error(
                 data.error ||
-                `Force check failed: ${response.status}`
+                "Live order book request failed"
             );
+
         }
 
 
-        console.log(
-            "FORCE CHECK ACCEPTED:",
+
+        /* ----------------------------------------------------
+           SYMBOL VALIDATION
+        ---------------------------------------------------- */
+
+        const responseSymbol =
+            String(
+                data.symbol ||
+                data.orderBook?.symbol ||
+                normalizedSymbol
+            )
+            .trim()
+            .toUpperCase();
+
+
+        const currentSelectedSymbol =
+            String(
+                selectedLiveCoin ||
+                select?.value ||
+                ""
+            )
+            .trim()
+            .toUpperCase();
+
+
+        if(
+            responseSymbol !==
+            currentSelectedSymbol
+        ){
+
+            console.warn(
+                "[LIVE ORDER BOOK] Stale response ignored.",
+                {
+                    requested:
+                        normalizedSymbol,
+
+                    response:
+                        responseSymbol,
+
+                    selected:
+                        currentSelectedSymbol
+                }
+            );
+
+            return;
+
+        }
+
+
+
+        /* ----------------------------------------------------
+           SAVE RESPONSE
+        ---------------------------------------------------- */
+
+        currentLiveOrderBookData =
+            data;
+
+
+
+        /* ----------------------------------------------------
+           UPDATE DASHBOARD
+        ---------------------------------------------------- */
+
+        updateLiveOrderBook(
             data
         );
 
 
-        setAutoTraderMessage(
-            `Force check started for ${symbol}. Watch the server console for the order-book decision.`
-        );
-
-
-        // Give backend a moment to finish its background
-        // position/order processing, then refresh UI.
-        setTimeout(
-            async () => {
-
-                await loadAutomaticTraderStatus();
-
-                await loadAutomaticPositions();
-
-            },
-            1500
-        );
-
-
-    } catch (error) {
+    }catch(error){
 
         console.error(
-            "FORCE CHECK ERROR:",
+            "[LIVE ORDER BOOK ERROR]",
             error
         );
 
 
-        setAutoTraderMessage(
-            `Force check error: ${error.message}`
-        );
+        const status =
+            document.getElementById(
+                "liveBookStatus"
+            );
 
 
-    } finally {
+        if(status){
 
-        if (button) {
+            status.textContent =
+                "ERROR";
 
-            button.disabled =
-                false;
+            status.className =
+                "badge danger";
 
-            button.textContent =
-                "▶ Force Check Now";
         }
 
 
-        automaticTraderLoading =
+    }finally{
+
+        liveOrderBookLoading =
             false;
+
     }
+
 }
 
 
-// ============================================================
-// AUTOMATIC TRADER STATUS
-// ============================================================
 
-async function loadAutomaticTraderStatus() {
+/* ============================================================
+   UPDATE STATUS
+============================================================ */
 
-    try {
+function updateStatus(
+    data
+){
 
-        const response =
-            await fetch(
-                "/automatic-trader/status",
-                {
-                    cache:
-                        "no-store"
-                }
-            );
+    if(!data){
 
-
-        if (!response.ok) {
-
-            throw new Error(
-                `Status HTTP ${response.status}`
-            );
-        }
-
-
-        const data =
-            await response.json();
-
-
-        const symbol =
-            data.selectedSymbol ||
-            data.symbol ||
-            (
-                Array.isArray(
-                    data.selectedSymbols
-                )
-                    ? data.selectedSymbols[0]
-                    : null
-            );
-
-
-        const selectedCoin =
-            document.getElementById(
-                "selectedAutoCoin"
-            );
-
-
-        if (selectedCoin) {
-
-            selectedCoin.textContent =
-                symbol ||
-                "NONE";
-        }
-
-
-        if (symbol) {
-
-            const select =
-                document.getElementById(
-                    "autoCoin"
-                );
-
-
-            if (select) {
-
-                const option =
-                    Array.from(
-                        select.options
-                    ).find(
-                        option =>
-                            option.value
-                                .toUpperCase() ===
-                            symbol.toUpperCase()
-                    );
-
-
-                if (option) {
-
-                    select.value =
-                        option.value;
-                }
-            }
-        }
-
-
-        const lastRun =
-            document.getElementById(
-                "autoLastRun"
-            );
-
-
-        if (lastRun) {
-
-            lastRun.textContent =
-                formatAutoDate(
-                    data.lastRun
-                );
-        }
-
-
-        const nextRun =
-            document.getElementById(
-                "autoNextRun"
-            );
-
-
-        if (nextRun) {
-
-            nextRun.textContent =
-                formatAutoDate(
-                    data.nextRun
-                );
-        }
-
-
-        if (data.running) {
-
-            setAutoTraderMessage(
-                symbol
-                    ? `${symbol} is currently being checked.`
-                    : "Automatic trader is currently running."
-            );
-        }
-
-
-    } catch (error) {
-
-        console.error(
-            "AUTOMATIC TRADER STATUS ERROR:",
-            error
-        );
-    }
-}
-
-
-// ============================================================
-// LOAD AUTOMATIC POSITIONS
-// ============================================================
-
-async function loadAutomaticPositions() {
-
-    const tbody =
-        document.getElementById(
-            "automaticPositions"
-        );
-
-
-    if (!tbody) {
         return;
+
     }
 
 
-    try {
+    setText(
+        "botStatus",
+        data.online
+            ? "ONLINE"
+            : "OFFLINE"
+    );
 
-        const response =
-            await fetch(
-                "/automatic-trader/positions",
-                {
-                    cache:
-                        "no-store"
-                }
-            );
 
+    setText(
+        "botMode",
+        data.mode || "--"
+    );
 
-        if (!response.ok) {
 
-            throw new Error(
-                `Positions HTTP ${response.status}`
-            );
-        }
 
-
-        const data =
-            await response.json();
-
-
-        const positions =
-            Array.isArray(
-                data.positions
-            )
-                ? data.positions
-                : [];
-
-
-        if (
-            positions.length === 0
-        ) {
-
-            tbody.innerHTML = `
-
-                <tr>
-
-                    <td
-                        colspan="7"
-                        class="table-empty"
-                    >
-                        No automatic coin selected.
-                    </td>
-
-                </tr>
-
-            `;
-
-            return;
-        }
-
-
-        tbody.innerHTML =
-            positions
-                .map(
-                    position => {
-
-                        const direction =
-                            String(
-                                position.direction ||
-                                "FLAT"
-                            )
-                                .toUpperCase();
-
-
-                        const directionClass =
-                            direction ===
-                            "LONG"
-
-                                ? "text-success"
-
-                                : direction ===
-                                  "SHORT"
-
-                                    ? "text-danger"
-
-                                    : "";
-
-
-                        const quantity =
-                            Number(
-                                position.quantity ||
-                                0
-                            );
-
-
-                        const avgPrice =
-                            Number(
-                                position.avgPrice ||
-                                0
-                            );
-
-
-                        const positionValue =
-                            Number(
-                                position.positionValue ||
-                                0
-                            );
-
-
-                        const pnl =
-                            Number(
-                                position.unrealizedPnL ||
-                                0
-                            );
-
-
-                        const leverage =
-                            Number(
-                                position.leverage ||
-                                0
-                            );
-
-
-                        return `
-
-                            <tr>
-
-                                <td class="coin-name">
-
-                                    <strong>
-                                        ${
-                                            position.symbol ||
-                                            "--"
-                                        }
-                                    </strong>
-
-                                </td>
-
-
-                                <td>
-
-                                    <strong
-                                        class="${directionClass}"
-                                    >
-                                        ${direction}
-                                    </strong>
-
-                                </td>
-
-
-                                <td>
-                                    ${quantity}
-                                </td>
-
-
-                                <td>
-                                    ${
-                                        avgPrice
-                                            ? avgPrice.toFixed(8)
-                                            : "—"
-                                    }
-                                </td>
-
-
-                                <td>
-                                    ${
-                                        positionValue
-                                            ? positionValue.toFixed(4)
-                                            : "—"
-                                    }
-                                </td>
-
-
-                                <td
-                                    class="${
-                                        pnl > 0
-                                            ? "text-success"
-                                            : pnl < 0
-                                                ? "text-danger"
-                                                : ""
-                                    }"
-                                >
-                                    ${
-                                        pnl.toFixed(4)
-                                    }
-                                </td>
-
-
-                                <td>
-                                    ${
-                                        leverage
-                                            ? leverage + "x"
-                                            : "—"
-                                    }
-                                </td>
-
-                            </tr>
-
-                        `;
-                    }
-                )
-                .join("");
-
-
-        // Also update top position indicator.
-        const first =
-            positions[0];
-
-
-        const selectedPosition =
-            document.getElementById(
-                "selectedAutoPosition"
-            );
-
-
-        if (
-            selectedPosition &&
-            first
-        ) {
-
-            selectedPosition.textContent =
-                first.direction ||
-                "FLAT";
-        }
-
-
-    } catch (error) {
-
-        console.error(
-            "AUTOMATIC POSITIONS ERROR:",
-            error
+    const balance =
+        Number(
+            data.balance
         );
 
 
-        tbody.innerHTML = `
+    setText(
+        "balance",
+        Number.isFinite(balance)
+            ? balance.toFixed(4)
+            : "--"
+    );
 
-            <tr>
 
-                <td
-                    colspan="7"
-                    class="table-empty"
-                >
-                    Error loading positions:
-                    ${error.message}
-                </td>
 
-            </tr>
+    const notional =
+        Number(
+            data.defaultRisk?.positionNotional
+        );
 
-        `;
+
+    setText(
+        "notional",
+        Number.isFinite(notional)
+            ? notional.toFixed(2)
+            : "--"
+    );
+
+
+    setText(
+        "symbolCount",
+        data.discoveredSymbols ?? 0
+    );
+
+
+    setText(
+        "margin",
+        `${data.defaultRisk?.margin ?? "--"} USDT`
+    );
+
+
+    setText(
+        "leverage",
+        `${data.defaultRisk?.leverage ?? "--"}x`
+    );
+
+
+    setText(
+        "marginMode",
+        data.marginMode || "--"
+    );
+
+
+    setText(
+        "tradingEnabled",
+        data.tradingEnabled
+            ? "ENABLED"
+            : "DISABLED"
+    );
+
+
+    setText(
+        "reversal",
+        data.reversal || "--"
+    );
+
+
+
+    /* --------------------------------------------------------
+       ORDER BOOK CONFIG
+    -------------------------------------------------------- */
+
+    const filter =
+        data.orderBookFilter || {};
+
+
+    setText(
+        "apiRequestDepth",
+        filter.apiRequestDepth ??
+        filter.depth ??
+        "--"
+    );
+
+
+    setText(
+        "confirmationDepths",
+        Array.isArray(
+            filter.confirmationDepths
+        )
+            ? filter.confirmationDepths.join(" + ")
+            : "--"
+    );
+
+
+    setText(
+        "comparisonDepths",
+        Array.isArray(
+            filter.comparisonDepths
+        )
+            ? filter.comparisonDepths.join(" / ")
+            : "--"
+    );
+
+
+    setText(
+        "longImbalance",
+        filter.long?.minImbalance ??
+        filter.longMinImbalance ??
+        "--"
+    );
+
+
+    setText(
+        "shortImbalance",
+        filter.short?.maxImbalance ??
+        filter.shortMaxImbalance ??
+        "--"
+    );
+
+
+    setText(
+        "bidAskRatio",
+        filter.long?.minBidAskRatio ??
+        filter.minBidAskRatio ??
+        "--"
+    );
+
+
+    setText(
+        "askBidRatio",
+        filter.short?.minAskBidRatio ??
+        filter.minAskBidRatio ??
+        "--"
+    );
+
+
+    setText(
+        "confirmationMode",
+        filter.long?.confirmation ||
+        filter.short?.confirmation ||
+        "ALL DEPTHS"
+    );
+
+
+
+    const filterStatus =
+        document.getElementById(
+            "filterStatus"
+        );
+
+
+    if(filterStatus){
+
+        filterStatus.textContent =
+            filter.enabled
+                ? "ENABLED"
+                : "DISABLED";
+
+
+        filterStatus.className =
+            filter.enabled
+                ? "badge success"
+                : "badge danger";
+
     }
+
+
+
+    /* --------------------------------------------------------
+       OTHER DATA
+    -------------------------------------------------------- */
+
+    updateStatistics(
+        data.orderFlowStatistics
+    );
+
+
+    updateSymbols(
+        data.symbols
+    );
+
+
+    updateCoinSelector(
+        data.symbols
+    );
+
+
+    setConnection(true);
+
 }
 
-
-// ============================================================
-// AUTOMATIC TRADER INITIAL LOAD
-// ============================================================
-
-async function initializeAutomaticTrader() {
-
-    await loadAutomaticTraderStatus();
-
-    await loadAutomaticPositions();
-}
-
-
-// ============================================================
-// AUTO REFRESH
-// ============================================================
-//
-// This does NOT trigger trading.
-//
-// It only refreshes the displayed status/position.
-//
-// The actual trader still runs once per hour.
-// ============================================================
-
-setInterval(
-    () => {
-
-        loadAutomaticTraderStatus();
-
-        loadAutomaticPositions();
-
-    },
-    15000
-);
-
-
-// ============================================================
-// INITIALIZE
-// ============================================================
-
-window.addEventListener(
-    "DOMContentLoaded",
-    () => {
-
-        initializeAutomaticTrader();
-
-    }
-);
 
 
 /* ============================================================
    PER COIN STATISTICS
 ============================================================ */
 
-function normalizePerCoinStats(stats){
+function normalizePerCoinStats(
+    stats
+){
 
-    if(!stats || typeof stats !== "object"){
+    if(
+        !stats ||
+        typeof stats !== "object"
+    ){
+
         return {};
+
     }
 
-    const source =
+
+    return (
         stats.bySymbol ||
         stats.perSymbol ||
         stats.perCoin ||
         stats.symbols ||
-        {};
+        {}
+    );
 
-    if(!source || typeof source !== "object"){
-        return {};
-    }
-
-    return source;
 }
 
 
-function numberOrDash(value,showZero=true){
+
+function numberOrDash(
+    value,
+    showZero = true
+){
 
     const number =
         Number(value);
 
+
     if(!Number.isFinite(number)){
+
         return "—";
+
     }
 
-    if(!showZero && number === 0){
+
+    if(
+        !showZero &&
+        number === 0
+    ){
+
         return "—";
+
     }
+
 
     return String(number);
+
 }
 
 
-function getDirectionStats(row,direction){
+
+function getDirectionStats(
+    row,
+    direction
+){
 
     const value =
         row?.[direction] ||
-        row?.[direction.toLowerCase()] ||
+        row?.[
+            direction.toLowerCase()
+        ] ||
         {};
+
 
     return {
 
@@ -1603,23 +3183,35 @@ function getDirectionStats(row,direction){
                 value.no ??
                 0
             )
+
     };
+
 }
 
 
-function renderPerCoinStatistics(stats){
+
+function renderPerCoinStatistics(
+    stats
+){
 
     latestPerCoinStats =
-        normalizePerCoinStats(stats);
+        normalizePerCoinStats(
+            stats
+        );
+
 
     const tbody =
         document.getElementById(
             "orderFlowByCoin"
         );
 
+
     if(!tbody){
+
         return;
+
     }
+
 
     const search =
         (
@@ -1630,85 +3222,116 @@ function renderPerCoinStatistics(stats){
         .trim()
         .toUpperCase();
 
+
     const entries =
         Object.entries(
             latestPerCoinStats
         )
-        .map(([symbol,raw]) => {
+        .map(
+            ([symbol,raw]) => {
 
-            const row =
-                raw && typeof raw === "object"
-                    ? raw
-                    : {};
+                const row =
+                    raw &&
+                    typeof raw === "object"
+                        ? raw
+                        : {};
 
-            const long =
-                getDirectionStats(
-                    row,
-                    "long"
-                );
 
-            const short =
-                getDirectionStats(
-                    row,
-                    "short"
-                );
+                const long =
+                    getDirectionStats(
+                        row,
+                        "long"
+                    );
 
-            const total =
-                long.accepted +
-                long.rejected +
-                short.accepted +
-                short.rejected;
 
-            return {
+                const short =
+                    getDirectionStats(
+                        row,
+                        "short"
+                    );
 
-                symbol:
-                    String(symbol).toUpperCase(),
 
-                long,
-                short,
-                total
-            };
+                const total =
+                    long.accepted +
+                    long.rejected +
+                    short.accepted +
+                    short.rejected;
 
-        })
-        .filter(item =>
-            !search ||
-            item.symbol.includes(search)
-        )
-        .sort((a,b) => {
 
-            if(b.total !== a.total){
-                return b.total - a.total;
+                return {
+
+                    symbol:
+                        String(
+                            symbol
+                        ).toUpperCase(),
+
+                    long,
+                    short,
+                    total
+
+                };
+
             }
+        )
+        .filter(
+            item =>
+                !search ||
+                item.symbol.includes(
+                    search
+                )
+        )
+        .sort(
+            (a,b) => {
 
-            return a.symbol.localeCompare(
-                b.symbol
-            );
-        });
+                if(
+                    b.total !==
+                    a.total
+                ){
+
+                    return (
+                        b.total -
+                        a.total
+                    );
+
+                }
+
+
+                return a.symbol.localeCompare(
+                    b.symbol
+                );
+
+            }
+        );
 
 
     if(!entries.length){
 
         tbody.innerHTML = `
             <tr>
-                <td colspan="6" class="table-empty">
+                <td
+                    colspan="6"
+                    class="table-empty">
+
                     ${
                         search
                             ? "No matching coins."
                             : "No order-flow checks yet."
                     }
+
                 </td>
             </tr>
         `;
 
         return;
+
     }
 
 
     tbody.innerHTML =
         entries
-        .map(item => {
+        .map(
+            item => `
 
-            return `
                 <tr>
 
                     <td class="coin-name">
@@ -1756,38 +3379,53 @@ function renderPerCoinStatistics(stats){
                     </td>
 
                 </tr>
-            `;
 
-        })
+            `
+        )
         .join("");
+
 }
+
 
 
 /* ============================================================
    STATISTICS
 ============================================================ */
 
-function updateStatistics(stats){
+function updateStatistics(
+    stats
+){
 
     if(!stats){
 
         renderPerCoinStatistics({});
 
         return;
+
     }
 
 
-    renderPerCoinStatistics(stats);
+    renderPerCoinStatistics(
+        stats
+    );
 
 
     const total =
-        Number(stats.total || 0);
+        Number(
+            stats.total || 0
+        );
+
 
     const accepted =
-        Number(stats.accepted || 0);
+        Number(
+            stats.accepted || 0
+        );
+
 
     const rejected =
-        Number(stats.rejected || 0);
+        Number(
+            stats.rejected || 0
+        );
 
 
     const acceptanceRate =
@@ -1810,23 +3448,47 @@ function updateStatistics(stats){
         );
 
 
-    setText("totalChecks",total);
-    setText("accepted",accepted);
-    setText("rejected",rejected);
+    setText(
+        "totalChecks",
+        total
+    );
+
+
+    setText(
+        "accepted",
+        accepted
+    );
+
+
+    setText(
+        "rejected",
+        rejected
+    );
+
 
     setText(
         "acceptanceRate",
-        formatPercent(acceptanceRate)
+        formatPercentAlready(
+            acceptanceRate
+        )
     );
+
 
     setText(
         "rejectionRate",
-        formatPercent(rejectionRate)
+        formatPercentAlready(
+            rejectionRate
+        )
     );
+
 
     setText(
         "rateText",
-        `${formatPercent(acceptanceRate)} / ${formatPercent(rejectionRate)}`
+        `${formatPercentAlready(
+            acceptanceRate
+        )} / ${formatPercentAlready(
+            rejectionRate
+        )}`
     );
 
 
@@ -1846,43 +3508,76 @@ function updateStatistics(stats){
                 ),
                 100
             ) + "%";
+
     }
+
 
 
     const long =
         stats.long || {};
+
 
     const short =
         stats.short || {};
 
 
     const longTotal =
-        Number(long.total || 0);
+        Number(
+            long.total || 0
+        );
+
 
     const longAccepted =
-        Number(long.accepted || 0);
+        Number(
+            long.accepted || 0
+        );
+
 
     const longRejected =
-        Number(long.rejected || 0);
+        Number(
+            long.rejected || 0
+        );
 
 
     const shortTotal =
-        Number(short.total || 0);
+        Number(
+            short.total || 0
+        );
+
 
     const shortAccepted =
-        Number(short.accepted || 0);
+        Number(
+            short.accepted || 0
+        );
+
 
     const shortRejected =
-        Number(short.rejected || 0);
+        Number(
+            short.rejected || 0
+        );
 
 
-    setText("longTotal",longTotal);
-    setText("longAccepted",longAccepted);
-    setText("longRejected",longRejected);
+    setText(
+        "longTotal",
+        longTotal
+    );
+
+
+    setText(
+        "longAccepted",
+        longAccepted
+    );
+
+
+    setText(
+        "longRejected",
+        longRejected
+    );
+
 
     setText(
         "longRate",
-        formatPercent(
+        formatPercentAlready(
             calculateRate(
                 longAccepted,
                 longTotal
@@ -1891,156 +3586,50 @@ function updateStatistics(stats){
     );
 
 
-    setText("shortTotal",shortTotal);
-    setText("shortAccepted",shortAccepted);
-    setText("shortRejected",shortRejected);
+    setText(
+        "shortTotal",
+        shortTotal
+    );
+
+
+    setText(
+        "shortAccepted",
+        shortAccepted
+    );
+
+
+    setText(
+        "shortRejected",
+        shortRejected
+    );
+
 
     setText(
         "shortRate",
-        formatPercent(
+        formatPercentAlready(
             calculateRate(
                 shortAccepted,
                 shortTotal
             )
         )
     );
+
 }
 
 
-/* ============================================================
-   SYMBOL DROPDOWN
-============================================================ */
-
-function updateCoinSelector(symbols){
-
-    const select =
-        document.getElementById(
-            "autoCoin"
-        );
-
-    if(!select){
-        return;
-    }
-
-
-    if(
-        !Array.isArray(symbols) ||
-        symbols.length === 0
-    ){
-
-        select.innerHTML =
-            `<option value="">No coins available</option>`;
-
-        return;
-    }
-
-
-    const oldValue =
-        selectedLiveCoin ||
-        select.value;
-
-
-    availableSymbols =
-        symbols.slice();
-
-
-    select.innerHTML =
-        symbols
-        .map(symbol => {
-
-            const safe =
-                String(symbol)
-                .replace(/"/g,"&quot;");
-
-            return `
-                <option value="${safe}">
-                    ${safe}
-                </option>
-            `;
-
-        })
-        .join("");
-
-
-    const selected =
-        symbols.includes(oldValue)
-            ? oldValue
-            : symbols[0];
-
-
-    select.value =
-        selected;
-
-
-    selectedLiveCoin =
-        selected;
-
-
-    setText(
-        "liveCoinLabel",
-        selected
-    );
-}
-
 
 /* ============================================================
-   SYMBOL DISPLAY
+   AUTOMATIC TRADER
 ============================================================ */
 
-function updateSymbols(symbols){
-
-    const container =
-        document.getElementById(
-            "symbols"
-        );
-
-    if(!container){
-        return;
-    }
-
-
-    if(
-        !Array.isArray(symbols) ||
-        symbols.length === 0
-    ){
-
-        container.innerHTML =
-            "<span>No symbols available.</span>";
-
-        setText(
-            "symbolsLoaded",
-            "0"
-        );
-
-        return;
-    }
-
-
-    setText(
-        "symbolsLoaded",
-        symbols.length
-    );
-
-
-    container.innerHTML =
-        symbols
-        .map(
-            symbol =>
-                `<span class="symbol">${symbol}</span>`
-        )
-        .join("");
-}
-
-
-/* ============================================================
-   AUTOMATIC TRADER STATUS
-============================================================ */
-
-function updateAutomaticTrader(data){
+function updateAutomaticTrader(
+    data
+){
 
     const auto =
         data?.automaticTrading ||
         data?.automaticTrader ||
+        data ||
         {};
 
 
@@ -2051,7 +3640,7 @@ function updateAutomaticTrader(data){
                 auto.running
                     ? "RUNNING"
                     : "ENABLED"
-              )
+            )
             : "DISABLED"
     );
 
@@ -2072,13 +3661,17 @@ function updateAutomaticTrader(data){
 
     setText(
         "autoLastRun",
-        formatDate(auto.lastRun)
+        formatDate(
+            auto.lastRun
+        )
     );
 
 
     setText(
         "autoNextRun",
-        formatDate(auto.nextRun)
+        formatDate(
+            auto.nextRun
+        )
     );
 
 
@@ -2089,568 +3682,13 @@ function updateAutomaticTrader(data){
                 auto.running
                     ? "Automatic trader is scanning symbols..."
                     : "Automatic trader is waiting for the next hourly scan."
-              )
+            )
             : "Automatic trader is disabled."
     );
+
 }
 
 
-/* ============================================================
-   DATE
-============================================================ */
-
-function formatDate(value){
-
-    if(!value){
-        return "--";
-    }
-
-    const date =
-        new Date(value);
-
-    if(
-        Number.isNaN(
-            date.getTime()
-        )
-    ){
-        return "--";
-    }
-
-    return date.toLocaleString();
-}
-
-
-/* ============================================================
-   STATUS
-============================================================ */
-
-function updateStatus(data){
-
-    if(!data){
-        return;
-    }
-
-
-    setText(
-        "botStatus",
-        data.online
-            ? "ONLINE"
-            : "OFFLINE"
-    );
-
-
-    setText(
-        "botMode",
-        data.mode || "--"
-    );
-
-
-    setText(
-        "balance",
-        Number(
-            data.balance || 0
-        ).toFixed(4)
-    );
-
-
-    setText(
-        "notional",
-        Number(
-            data.defaultRisk?.positionNotional || 0
-        ).toFixed(2)
-    );
-
-
-    setText(
-        "symbolCount",
-        data.discoveredSymbols || 0
-    );
-
-
-    setText(
-        "margin",
-        `${data.defaultRisk?.margin ?? "--"} USDT`
-    );
-
-
-    setText(
-        "leverage",
-        `${data.defaultRisk?.leverage ?? "--"}x`
-    );
-
-
-    setText(
-        "marginMode",
-        data.marginMode || "--"
-    );
-
-
-    setText(
-        "tradingEnabled",
-        data.tradingEnabled
-            ? "ENABLED"
-            : "DISABLED"
-    );
-
-
-    setText(
-        "reversal",
-        data.reversal || "--"
-    );
-
-
-    const filter =
-        data.orderBookFilter || {};
-
-
-    setText(
-        "depth",
-        filter.depth ?? "--"
-    );
-
-
-    setText(
-        "longImbalance",
-        filter.longMinImbalance ?? "--"
-    );
-
-
-    setText(
-        "shortImbalance",
-        filter.shortMaxImbalance ?? "--"
-    );
-
-
-    setText(
-        "bidAskRatio",
-        filter.minBidAskRatio ?? "--"
-    );
-
-
-    setText(
-        "askBidRatio",
-        filter.minAskBidRatio ?? "--"
-    );
-
-
-    const filterStatus =
-        document.getElementById(
-            "filterStatus"
-        );
-
-
-    if(filterStatus){
-
-        filterStatus.textContent =
-            filter.enabled
-                ? "ENABLED"
-                : "DISABLED";
-
-        filterStatus.className =
-            filter.enabled
-                ? "badge success"
-                : "badge danger";
-    }
-
-
-    updateStatistics(
-        data.orderFlowStatistics
-    );
-
-
-    updateAutomaticTrader(
-        data
-    );
-
-
-    updateSymbols(
-        data.symbols
-    );
-
-
-    updateCoinSelector(
-        data.symbols
-    );
-
-
-    setConnection(true);
-}
-
-
-/* ============================================================
-   LIVE ORDER BOOK DISPLAY
-============================================================ */
-
-function updateLiveOrderBook(data){
-
-    if(!data){
-        return;
-    }
-
-
-    const book =
-        data.orderBook ||
-        data;
-
-
-    const symbol =
-        data.symbol ||
-        selectedLiveCoin;
-
-
-    setText(
-        "liveCoinLabel",
-        symbol
-    );
-
-
-    setText(
-        "liveBidLiquidity",
-        formatNumber(
-            book.bidLiquidity
-        )
-    );
-
-
-    setText(
-        "liveAskLiquidity",
-        formatNumber(
-            book.askLiquidity
-        )
-    );
-
-
-    setText(
-        "liveBidPercentage",
-        formatPercent(
-            Number(book.bidPercentage) * 100
-        )
-    );
-
-
-    setText(
-        "liveAskPercentage",
-        formatPercent(
-            Number(book.askPercentage) * 100
-        )
-    );
-
-
-    const imbalance =
-        Number(
-            book.imbalance
-        );
-
-
-    setText(
-        "liveImbalance",
-        Number.isFinite(imbalance)
-            ? imbalance.toFixed(4)
-            : "--"
-    );
-
-
-    setText(
-        "liveBidAskRatio",
-        Number.isFinite(
-            Number(book.bidAskRatio)
-        )
-            ? Number(book.bidAskRatio).toFixed(4)
-            : "--"
-    );
-
-
-    setText(
-        "liveAskBidRatio",
-        Number.isFinite(
-            Number(book.askBidRatio)
-        )
-            ? Number(book.askBidRatio).toFixed(4)
-            : "--"
-    );
-
-
-    setText(
-        "liveDepth",
-        book.depth ??
-        book.depthLevels ??
-        "--"
-    );
-
-
-    const decision =
-        document.getElementById(
-            "liveDecision"
-        );
-
-
-    if(decision){
-
-        let text =
-            "NEUTRAL";
-
-        let className =
-            "orderbook-direction neutral";
-
-
-        const longAllowed =
-            book.longAllowed ??
-            (
-                Number.isFinite(imbalance) &&
-                Number(book.longMinImbalance) <= imbalance
-            );
-
-
-        const shortAllowed =
-            book.shortAllowed ??
-            (
-                Number.isFinite(imbalance) &&
-                Number(book.shortMaxImbalance) >= imbalance
-            );
-
-
-        if(book.decision){
-
-            text =
-                String(
-                    book.decision
-                ).toUpperCase();
-
-
-        }else if(
-            longAllowed &&
-            !shortAllowed
-        ){
-
-            text =
-                "LONG";
-
-            className =
-                "orderbook-direction long";
-
-
-        }else if(
-            shortAllowed &&
-            !longAllowed
-        ){
-
-            text =
-                "SHORT";
-
-            className =
-                "orderbook-direction short";
-        }
-
-
-        decision.textContent =
-            text;
-
-        decision.className =
-            className;
-    }
-
-
-    setText(
-        "liveBookUpdate",
-        new Date().toLocaleString()
-    );
-
-
-    const status =
-        document.getElementById(
-            "liveBookStatus"
-        );
-
-
-    if(status){
-
-        status.textContent =
-            "LIVE";
-
-        status.className =
-            "badge success";
-    }
-}
-
-
-/* ============================================================
-   LOAD LIVE ORDER BOOK
-============================================================ */
-
-async function loadLiveOrderBook(){
-
-    const select =
-        document.getElementById(
-            "autoCoin"
-        );
-
-
-    const symbol =
-        selectedLiveCoin ||
-        select?.value;
-
-
-    if(!symbol){
-        return;
-    }
-
-
-    try{
-
-        const response =
-            await fetch(
-                `/live-orderbook?symbol=${encodeURIComponent(symbol)}`,
-                {
-                    cache:"no-store"
-                }
-            );
-
-
-        if(!response.ok){
-
-            throw new Error(
-                `Live order book HTTP ${response.status}`
-            );
-        }
-
-
-        const data =
-            await response.json();
-
-
-        if(!data.success){
-
-            throw new Error(
-                data.error ||
-                "Live order book request failed"
-            );
-        }
-
-
-        updateLiveOrderBook(
-            data
-        );
-
-
-    }catch(error){
-
-        console.error(
-            "Live order book error:",
-            error
-        );
-
-
-        const status =
-            document.getElementById(
-                "liveBookStatus"
-            );
-
-
-        if(status){
-
-            status.textContent =
-                "ERROR";
-
-            status.className =
-                "badge danger";
-        }
-    }
-}
-
-
-/* ============================================================
-   RUN AUTOMATIC TRADER
-============================================================ */
-
-async function runAutomaticTrader(){
-
-    const button =
-        document.getElementById("autoRunButton");
-
-    const select =
-        document.getElementById("autoCoin");
-
-    const symbol =
-        select?.value?.trim().toUpperCase();
-
-    if(!symbol){
-
-        alert("Please select a coin.");
-
-        return;
-    }
-
-    console.log(
-        "MANUAL AUTO TRADER REQUEST:",
-        symbol
-    );
-
-    if(button){
-
-        button.disabled = true;
-        button.textContent = "▶ Starting...";
-    }
-
-    try{
-
-        const response =
-            await fetch(
-                "/automatic-trader/run",
-                {
-                    method:"POST",
-                    headers:{
-                        "Content-Type":"application/json"
-                    },
-                    body:JSON.stringify({
-                        symbol:symbol
-                    })
-                }
-            );
-
-        const data =
-            await response.json();
-
-        if(!response.ok){
-
-            throw new Error(
-                data.error ||
-                `HTTP ${response.status}`
-            );
-        }
-
-        setText(
-            "autoTraderMessage",
-            data.message ||
-            `Automatic trader scan started for ${symbol}.`
-        );
-
-        await loadAutomaticTraderStatus();
-
-    }catch(error){
-
-        console.error(
-            "Automatic trader error:",
-            error
-        );
-
-        setText(
-            "autoTraderMessage",
-            "ERROR: " + error.message
-        );
-
-    }finally{
-
-        if(button){
-
-            button.disabled = false;
-            button.textContent = "▶ Run Scan Now";
-        }
-    }
-}
-
-/* ============================================================
-   AUTOMATIC TRADER STATUS
-============================================================ */
 
 async function loadAutomaticTraderStatus(){
 
@@ -2670,6 +3708,7 @@ async function loadAutomaticTraderStatus(){
             throw new Error(
                 `HTTP ${response.status}`
             );
+
         }
 
 
@@ -2678,33 +3717,107 @@ async function loadAutomaticTraderStatus(){
 
 
         updateAutomaticTrader(
-            {
-                automaticTrading:
-                    data
-            }
+            data
         );
+
+
+        const symbol =
+            data.selectedSymbol ||
+            data.symbol ||
+            (
+                Array.isArray(
+                    data.selectedSymbols
+                )
+                    ? data.selectedSymbols[0]
+                    : null
+            );
+
+
+        if(symbol){
+
+            const select =
+                document.getElementById(
+                    "autoCoin"
+                );
+
+
+            if(select){
+
+                const option =
+                    Array.from(
+                        select.options
+                    )
+                    .find(
+                        option =>
+                            option.value
+                            .toUpperCase() ===
+                            String(
+                                symbol
+                            ).toUpperCase()
+                    );
+
+
+                if(option){
+
+                    select.value =
+                        option.value;
+
+                    selectedLiveCoin =
+                        option.value;
+
+                }
+
+            }
+
+        }
 
 
     }catch(error){
 
         console.error(
-            "Automatic trader status error:",
+            "AUTOMATIC TRADER STATUS ERROR:",
             error
         );
+
     }
+
 }
 
 
+
 /* ============================================================
-   MAIN DASHBOARD LOAD
+   AUTOMATIC TRADER RUN
 ============================================================ */
 
-async function loadDashboard(){
+async function runAutomaticTrader(){
 
     const button =
         document.getElementById(
-            "refreshButton"
+            "autoRunButton"
         );
+
+
+    const select =
+        document.getElementById(
+            "autoCoin"
+        );
+
+
+    const symbol =
+        select?.value
+        ?.trim()
+        .toUpperCase();
+
+
+    if(!symbol){
+
+        alert(
+            "Please select a coin."
+        );
+
+        return;
+
+    }
 
 
     if(button){
@@ -2713,73 +3826,70 @@ async function loadDashboard(){
             true;
 
         button.textContent =
-            "↻ Loading...";
+            "▶ Starting...";
+
     }
 
 
     try{
 
-        /* ---------------------------------------------
-           REQUEST #1
-           Dashboard status
-        --------------------------------------------- */
-
         const response =
             await fetch(
-                "/status",
+                "/automatic-trader/run",
                 {
-                    cache:"no-store"
+
+                    method:"POST",
+
+                    headers:{
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+                            symbol
+                        })
+
                 }
             );
-
-
-        if(!response.ok){
-
-            throw new Error(
-                `Status HTTP ${response.status}`
-            );
-        }
 
 
         const data =
             await response.json();
 
 
-        updateStatus(
-            data
-        );
+        if(!response.ok){
+
+            throw new Error(
+                data.error ||
+                `HTTP ${response.status}`
+            );
+
+        }
 
 
         setText(
-            "lastUpdate",
-            new Date().toLocaleString()
+            "autoTraderMessage",
+            data.message ||
+            `Automatic trader scan started for ${symbol}.`
         );
 
 
-        /* ---------------------------------------------
-           REQUEST #2
-           Live order book
-           
-           Only happens when loadDashboard()
-           itself is executed.
-        --------------------------------------------- */
-
-        await loadLiveOrderBook();
+        await loadAutomaticTraderStatus();
 
 
     }catch(error){
 
         console.error(
-            "Dashboard error:",
+            "AUTOMATIC TRADER ERROR:",
             error
         );
 
 
-        setConnection(false);
-
         setText(
-            "botStatus",
-            "ERROR"
+            "autoTraderMessage",
+            "ERROR: " +
+            error.message
         );
 
 
@@ -2791,10 +3901,132 @@ async function loadDashboard(){
                 false;
 
             button.textContent =
-                "↻ Refresh";
+                "▶ Run Scan Now";
+
         }
+
     }
+
 }
+
+
+
+/* ============================================================
+   FORCE AUTOMATIC CHECK
+============================================================ */
+
+async function forceAutomaticCheck(){
+
+    const button =
+        document.getElementById(
+            "forceAutoCheckButton"
+        );
+
+
+    if(!button){
+
+        return;
+
+    }
+
+
+    const original =
+        button.innerText;
+
+
+    button.disabled =
+        true;
+
+
+    button.innerText =
+        "⏳ Checking...";
+
+
+    try{
+
+        const response =
+            await fetch(
+                "/automatic-trader/run",
+                {
+
+                    method:"POST",
+
+                    headers:{
+                        "Content-Type":
+                            "application/json"
+                    }
+
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if(!response.ok){
+
+            throw new Error(
+                data.error ||
+                "Automatic check failed"
+            );
+
+        }
+
+
+        button.innerText =
+            "✓ Check Started";
+
+
+        setTimeout(
+            () => {
+
+                button.innerText =
+                    original;
+
+            },
+            2000
+        );
+
+
+    }catch(error){
+
+        console.error(
+            "FORCE CHECK ERROR:",
+            error
+        );
+
+
+        button.innerText =
+            "✗ Check Failed";
+
+
+        setTimeout(
+            () => {
+
+                button.innerText =
+                    original;
+
+            },
+            2500
+        );
+
+    }finally{
+
+        setTimeout(
+            () => {
+
+                button.disabled =
+                    false;
+
+            },
+            1000
+        );
+
+    }
+
+}
+
 
 
 /* ============================================================
@@ -2810,7 +4042,9 @@ async function resetStatistics(){
 
 
     if(!confirmed){
+
         return;
+
     }
 
 
@@ -2830,6 +4064,7 @@ async function resetStatistics(){
             throw new Error(
                 `Reset HTTP ${response.status}`
             );
+
         }
 
 
@@ -2851,7 +4086,7 @@ async function resetStatistics(){
     }catch(error){
 
         console.error(
-            "Reset error:",
+            "RESET ERROR:",
             error
         );
 
@@ -2859,74 +4094,190 @@ async function resetStatistics(){
         alert(
             "Could not reset statistics."
         );
+
     }
+
 }
+
 
 
 /* ============================================================
    COIN CHANGE
 ============================================================ */
 
-const autoCoin =
-    document.getElementById("autoCoin");
+document
+.getElementById(
+    "autoCoin"
+)
+?.addEventListener(
+    "change",
+    () => {
 
-if(autoCoin){
+        selectedLiveCoin =
+            document
+            .getElementById(
+                "autoCoin"
+            )
+            .value
+            .trim()
+            .toUpperCase();
 
-    autoCoin.addEventListener(
-        "change",
-        () => {
 
-            selectedLiveCoin =
-                autoCoin.value
-                    .trim()
-                    .toUpperCase();
+        setText(
+            "liveCoinLabel",
+            selectedLiveCoin
+        );
 
-            setText(
-                "liveCoinLabel",
-                selectedLiveCoin
-            );
 
-            console.log(
-                "SELECTED COIN:",
-                selectedLiveCoin
-            );
+        resetLiveOrderBookDisplay();
 
-            loadLiveOrderBook();
-        }
-    );
-}
+
+        loadLiveOrderBook();
+
+    }
+);
+
+
 
 /* ============================================================
    SEARCH
 ============================================================ */
 
-const coinSearch =
-    document.getElementById(
-        "coinSearch"
-    );
+document
+.getElementById(
+    "coinSearch"
+)
+?.addEventListener(
+    "input",
+    () =>
+        renderPerCoinStatistics(
+            latestPerCoinStats
+        )
+);
 
-
-if(coinSearch){
-
-    coinSearch.addEventListener(
-        "input",
-        () =>
-            renderPerCoinStatistics(
-                latestPerCoinStats
-            )
-    );
-}
 
 
 /* ============================================================
-   AUTOMATIC REFRESH
+   MAIN DASHBOARD
 ============================================================ */
 
-/*
- * DASHBOARD STATUS
- *
- * Exactly once every hour.
- */
+async function loadDashboard(){
+
+    const button =
+        document.getElementById(
+            "refreshButton"
+        );
+
+
+    if(button){
+
+        button.disabled =
+            true;
+
+        button.textContent =
+            "↻ Loading...";
+
+    }
+
+
+    try{
+
+        const response =
+            await fetch(
+                "/status",
+                {
+                    cache:"no-store"
+                }
+            );
+
+
+        if(!response.ok){
+
+            throw new Error(
+                `Status HTTP ${response.status}`
+            );
+
+        }
+
+
+        const data =
+            await response.json();
+
+
+        updateStatus(
+            data
+        );
+
+
+        setText(
+            "lastUpdate",
+            new Date().toLocaleString()
+        );
+
+
+        await loadLiveOrderBook();
+
+
+        await loadAutomaticTraderStatus();
+
+
+    }catch(error){
+
+        console.error(
+            "DASHBOARD ERROR:",
+            error
+        );
+
+
+        setConnection(
+            false
+        );
+
+
+        setText(
+            "botStatus",
+            "ERROR"
+        );
+
+
+    }finally{
+
+        if(button){
+
+            button.disabled =
+                false;
+
+            button.textContent =
+                "↻ Refresh";
+
+        }
+
+    }
+
+}
+
+
+
+/* ============================================================
+   INITIAL LOAD
+============================================================ */
+
+window.addEventListener(
+    "DOMContentLoaded",
+    async () => {
+
+        await loadDashboard();
+
+    }
+);
+
+
+
+/* ============================================================
+   MAIN STATUS REFRESH
+   Every 60 minutes
+============================================================ */
+
 setInterval(
     () => {
 
@@ -2937,47 +4288,35 @@ setInterval(
 );
 
 
-/*
- * NO SECOND LIVE ORDER BOOK TIMER.
- *
- * The live order book is loaded by loadDashboard().
- *
- * Therefore:
- *
- * /status            = once per hour
- * /live-orderbook    = once per hour
- *
- * This prevents duplicate requests.
- */
+
+/* ============================================================
+   LIVE ORDER BOOK REFRESH
+   Every 1 minute
+============================================================ */
+
+setInterval(
+    () => {
+
+        loadLiveOrderBook();
+
+    },
+    LIVE_ORDERBOOK_REFRESH_MS
+);
+
 
 
 /* ============================================================
-   INITIAL LOAD
+   AUTOMATIC TRADER STATUS REFRESH
+   Every 1 minute
 ============================================================ */
 
-window.addEventListener(
-    "DOMContentLoaded",
+setInterval(
     () => {
-
-        /*
-         * One initial dashboard request.
-         *
-         * loadDashboard() also performs one
-         * live-orderbook request.
-         */
-
-        loadDashboard();
-
-
-        /*
-         * One automatic-trader status request.
-         *
-         * This is NOT repeated every few seconds.
-         */
 
         loadAutomaticTraderStatus();
 
-    }
+    },
+    AUTOMATIC_STATUS_REFRESH_MS
 );
 
 </script>

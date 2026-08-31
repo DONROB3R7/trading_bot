@@ -8,18 +8,14 @@ const {
     DEFAULT_MARGIN,
     DEFAULT_LEVERAGE,
     REQUIRED_MARGIN_MODE,
-
     ORDER_BOOK_DEPTH,
     LONG_MIN_IMBALANCE,
     SHORT_MAX_IMBALANCE,
     MIN_BID_ASK_RATIO,
     MIN_ASK_BID_RATIO,
-
     TRADING_ENABLED,
-
     AUTO_TRADING_ENABLED,
     AUTO_TRADING_INTERVAL_MS,
-
     API_KEY,
     API_SECRET,
     API_PASSPHRASE
@@ -36,11 +32,19 @@ const {
 
 const {
     processSignal,
-    checkOrderBook,
     getStatusConfig,
     getOrderBookStats,
-    resetOrderBookStats
+    resetOrderBookStats,
+    getAutomaticTradingStatus,
+    runAutomaticTradingCycle
 } = require("./trading/trading");
+
+const {
+    getMultiDepthSnapshot,
+    evaluateMultiDepth,
+    CONFIRMATION_DEPTHS,
+    WEEX_REQUEST_DEPTH
+} = require("./filters/orderBook");
 
 const {
     section,
@@ -63,6 +67,478 @@ app.use(
 
 
 // ============================================================
+// SERVER STATE
+// ============================================================
+
+let automaticTraderRunning = false;
+
+let automaticTraderTimer = null;
+
+let automaticTraderLastRun = null;
+
+let automaticTraderNextRun = null;
+
+
+// ============================================================
+// MANAGED SYMBOLS
+// ============================================================
+
+const managedSymbols =
+    new Set();
+
+
+// ============================================================
+// TWO-OF-THREE CONFIRMATION
+// ============================================================
+//
+// WEEX requests 200 levels.
+//
+// Trading uses only:
+//
+//     15
+//     30
+//     60
+//
+// Requirement:
+//
+//     AT LEAST 2 OF 3 MUST PASS.
+//
+// 200 is NOT a trading confirmation depth.
+//
+// ============================================================
+
+function getTwoOfThreeConfirmation(
+    multiDepth
+) {
+
+    const depths = [
+        15,
+        30,
+        60
+    ];
+
+
+    const passedDepths =
+        depths.filter(
+            depth =>
+                multiDepth?.results?.[depth]?.filterPass === true
+        );
+
+
+    const failedDepths =
+        depths.filter(
+            depth =>
+                multiDepth?.results?.[depth]?.filterPass !== true
+        );
+
+
+    const passedCount =
+        passedDepths.length;
+
+
+    const confirmationRequired =
+        2;
+
+
+    const confirmationPassed =
+        passedCount >= confirmationRequired;
+
+
+    return {
+
+        confirmationDepths:
+            depths,
+
+        confirmationRequired,
+
+        passedDepths,
+
+        failedDepths,
+
+        passedCount,
+
+        confirmationPassed,
+
+        confirmationReason:
+            confirmationPassed
+                ? `TWO_OF_THREE_CONFIRMED_${passedCount}_OF_3`
+                : `TWO_OF_THREE_FAILED_${passedCount}_OF_3`
+    };
+}
+
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function getPositionSide(
+    position
+) {
+
+    if (!position) {
+        return "UNKNOWN";
+    }
+
+
+    const direct =
+        String(
+            position.direction ||
+            position.side ||
+            position.positionSide ||
+            position.holdSide ||
+            ""
+        )
+            .trim()
+            .toUpperCase();
+
+
+    if (
+        direct === "LONG" ||
+        direct === "BUY"
+    ) {
+        return "LONG";
+    }
+
+
+    if (
+        direct === "SHORT" ||
+        direct === "SELL"
+    ) {
+        return "SHORT";
+    }
+
+
+    if (
+        direct === "FLAT" ||
+        direct === "NONE"
+    ) {
+        return "FLAT";
+    }
+
+
+    const size =
+        Number(
+            position.size ??
+            position.positionSize ??
+            position.quantity ??
+            position.qty ??
+            0
+        );
+
+
+    if (
+        !Number.isFinite(size) ||
+        Math.abs(size) === 0
+    ) {
+        return "FLAT";
+    }
+
+
+    if (
+        direct.includes("LONG")
+    ) {
+        return "LONG";
+    }
+
+
+    if (
+        direct.includes("SHORT")
+    ) {
+        return "SHORT";
+    }
+
+
+    return "UNKNOWN";
+}
+
+
+function isSupported(
+    symbol
+) {
+
+    return (
+        !!symbol &&
+        SUPPORTED_SYMBOLS.has(symbol)
+    );
+}
+
+
+function addManagedSymbol(
+    symbol
+) {
+
+    const normalized =
+        normalizeSymbol(
+            symbol
+        );
+
+
+    if (
+        !isSupported(
+            normalized
+        )
+    ) {
+        return false;
+    }
+
+
+    managedSymbols.add(
+        normalized
+    );
+
+
+    console.log(
+        "MANAGED SYMBOL ADDED:",
+        normalized
+    );
+
+
+    return true;
+}
+
+
+function removeManagedSymbol(
+    symbol
+) {
+
+    const normalized =
+        normalizeSymbol(
+            symbol
+        );
+
+
+    if (!normalized) {
+        return false;
+    }
+
+
+    const removed =
+        managedSymbols.delete(
+            normalized
+        );
+
+
+    if (removed) {
+
+        console.log(
+            "MANAGED SYMBOL REMOVED:",
+            normalized
+        );
+    }
+
+
+    return removed;
+}
+
+
+function managedList() {
+
+    return Array.from(
+        managedSymbols
+    ).sort();
+}
+
+
+// ============================================================
+// DISCOVER LIVE WEEX POSITIONS
+// ============================================================
+
+async function discoverLivePositions() {
+
+    const symbols =
+        Array.from(
+            SUPPORTED_SYMBOLS
+        ).sort();
+
+
+    const activePositions =
+        [];
+
+    const discoveredActive =
+        new Set();
+
+
+    console.log("");
+
+    console.log(
+        "############################################################"
+    );
+
+    console.log(
+        "DISCOVERING LIVE WEEX POSITIONS"
+    );
+
+    console.log(
+        "############################################################"
+    );
+
+    console.log(
+        "Total WEEX symbols available:",
+        symbols.length
+    );
+
+
+    for (
+        const symbol of symbols
+    ) {
+
+        try {
+
+            const position =
+                await getCurrentPosition(
+                    symbol
+                );
+
+
+            const direction =
+                getPositionSide(
+                    position
+                );
+
+
+            if (
+                direction === "LONG" ||
+                direction === "SHORT"
+            ) {
+
+                discoveredActive.add(
+                    symbol
+                );
+
+
+                activePositions.push({
+
+                    symbol,
+
+                    direction,
+
+                    quantity:
+                        position.quantity ??
+                        position.size ??
+                        0,
+
+                    avgPrice:
+                        position.avgPrice ??
+                        0,
+
+                    positionValue:
+                        position.positionValue ??
+                        0,
+
+                    unrealizedPnL:
+                        position.unrealizedPnL ??
+                        0
+                });
+
+
+                console.log(
+                    "ACTIVE WEEX POSITION:",
+                    symbol,
+                    direction
+                );
+            }
+
+        } catch (error) {
+
+            console.error(
+                `POSITION DISCOVERY ERROR ${symbol}:`,
+                error.message
+            );
+        }
+    }
+
+
+    const previousManaged =
+        new Set(
+            managedSymbols
+        );
+
+
+    for (
+        const symbol of discoveredActive
+    ) {
+
+        managedSymbols.add(
+            symbol
+        );
+    }
+
+
+    for (
+        const symbol of previousManaged
+    ) {
+
+        if (
+            !discoveredActive.has(
+                symbol
+            )
+        ) {
+
+            managedSymbols.delete(
+                symbol
+            );
+
+
+            console.log(
+                "WEEX POSITION NO LONGER ACTIVE:",
+                symbol
+            );
+        }
+    }
+
+
+    console.log("");
+
+    console.log(
+        "LIVE WEEX POSITIONS FOUND:",
+        activePositions.length
+    );
+
+    console.log(
+        "MANAGED SYMBOLS:",
+        managedSymbols.size
+    );
+
+
+    if (
+        activePositions.length > 0
+    ) {
+
+        console.log("");
+
+        for (
+            const position of activePositions
+        ) {
+
+            console.log(
+                `${position.symbol}: ${position.direction}`
+            );
+        }
+    }
+
+
+    console.log(
+        "############################################################"
+    );
+
+
+    return {
+
+        totalSymbols:
+            symbols.length,
+
+        activePositions,
+
+        activeCount:
+            activePositions.length,
+
+        managedSymbols:
+            managedList()
+    };
+}
+
+
+// ============================================================
 // STARTUP
 // ============================================================
 
@@ -80,7 +556,7 @@ console.log(
 );
 
 console.log(
-    "Automatic hourly trading:",
+    "Automatic trading:",
     AUTO_TRADING_ENABLED
         ? "ENABLED"
         : "DISABLED"
@@ -121,30 +597,37 @@ console.log(
 );
 
 console.log(
-    "Order book depth:",
-    ORDER_BOOK_DEPTH
+    "WEEX API order-book request:",
+    `${WEEX_REQUEST_DEPTH} levels`
+);
+
+console.log(
+    "Trading confirmation depths:",
+    CONFIRMATION_DEPTHS.join(" + ")
+);
+
+console.log(
+    "Confirmation rule:",
+    "2 OF 3 DEPTHS MUST PASS"
 );
 
 console.log(
     "LONG:",
     `imbalance >= ${LONG_MIN_IMBALANCE}`,
-    `AND bid/ask >= ${MIN_BID_ASK_RATIO}`
+    `AND bid/ask >= ${MIN_BID_ASK_RATIO}`,
+    "AT LEAST 2 OF 3 DEPTHS"
 );
 
 console.log(
     "SHORT:",
     `imbalance <= ${SHORT_MAX_IMBALANCE}`,
-    `AND ask/bid >= ${MIN_ASK_BID_RATIO}`
+    `AND ask/bid >= ${MIN_ASK_BID_RATIO}`,
+    "AT LEAST 2 OF 3 DEPTHS"
 );
 
 console.log(
     "CLOSE:",
     "NEVER FILTERED"
-);
-
-console.log(
-    "Symbols:",
-    "DISCOVERED AUTOMATICALLY FROM WEEX"
 );
 
 console.log(
@@ -158,13 +641,8 @@ console.log(
 );
 
 console.log(
-    "Order-flow statistics:",
-    "ENABLED"
-);
-
-console.log(
     "Automatic trader:",
-    "SELECTED COIN ONLY"
+    "LIVE WEEX POSITIONS -> 2 OF 3 ORDER BOOK -> HOLD / FLIP"
 );
 
 console.log(
@@ -178,8 +656,6 @@ if (
     !API_PASSPHRASE
 ) {
 
-    console.error("");
-
     console.error(
         "WARNING: WEEX API credentials missing."
     );
@@ -187,103 +663,30 @@ if (
 
 
 // ============================================================
-// AUTOMATIC HOURLY TRADER STATE
-// ============================================================
-//
-// IMPORTANT:
-//
-// The automatic trader NO LONGER scans SUPPORTED_SYMBOLS.
-//
-// It only scans symbols selected from the frontend.
-//
-// Example:
-//
-// selectedAutoSymbols = ["WIFUSDT"]
-//
-// Therefore 1000BONKUSDT cannot be traded automatically
-// unless it is explicitly selected.
-//
+// MANAGED SYMBOLS
 // ============================================================
 
-let automaticTraderRunning =
-    false;
+app.get(
+    "/managed-symbols",
+    (req, res) => {
 
-let automaticTraderTimer =
-    null;
-
-let automaticTraderLastRun =
-    null;
-
-let automaticTraderNextRun =
-    null;
+        const symbols =
+            managedList();
 
 
-// Current automatic-trading symbols.
-//
-// Set starts empty.
-//
-// Frontend must explicitly select a coin.
-//
-// This prevents the old behaviour where the bot automatically
-// scanned the entire WEEX symbol list.
-//
-const selectedAutoSymbols =
-    new Set();
+        res.json({
 
+            success:
+                true,
 
-// ============================================================
-// VALIDATE AUTOMATIC SYMBOL
-// ============================================================
+            count:
+                symbols.length,
 
-function validateAutomaticSymbol(
-    rawSymbol
-) {
-
-    const symbol =
-        normalizeSymbol(
-            rawSymbol
-        );
-
-
-    if (
-        !symbol
-    ) {
-
-        throw new Error(
-            "Automatic trading symbol is required."
-        );
+            symbols
+        });
     }
+);
 
-
-    if (
-        !SUPPORTED_SYMBOLS.has(
-            symbol
-        )
-    ) {
-
-        throw new Error(
-            `Unsupported or unavailable WEEX symbol: ${symbol}`
-        );
-    }
-
-
-    return symbol;
-}
-
-
-// ============================================================
-// SET AUTOMATIC SYMBOL
-// ============================================================
-//
-// Current frontend uses one selected coin.
-//
-// POST /automatic-trader/select
-//
-// {
-//     "symbol": "WIFUSDT"
-// }
-//
-// ============================================================
 
 app.post(
     "/automatic-trader/select",
@@ -291,158 +694,147 @@ app.post(
 
         try {
 
-            const symbol =
-                validateAutomaticSymbol(
-                    req.body?.symbol
-                );
-
-
-            // IMPORTANT:
-            //
-            // Replace the current selection.
-            //
-            // This guarantees that selecting WIFUSDT
-            // removes 1000BONKUSDT from automatic trading.
-            //
-            selectedAutoSymbols.clear();
-
-            selectedAutoSymbols.add(
-                symbol
-            );
-
-
-            console.log("");
-
-            console.log(
-                "============================================================"
-            );
-
-            console.log(
-                "AUTOMATIC TRADER SYMBOL CHANGED"
-            );
-
-            console.log(
-                "Selected coin:",
-                symbol
-            );
-
-            console.log(
-                "Automatic symbols:",
-                Array.from(
-                    selectedAutoSymbols
+            const requested =
+                Array.isArray(
+                    req.body?.symbols
                 )
-            );
+                    ? req.body.symbols
+                    : [];
+
+
+            const valid =
+                [];
+
+            const invalidSymbols =
+                [];
+
+
+            for (
+                const raw of requested
+            ) {
+
+                const symbol =
+                    normalizeSymbol(
+                        raw
+                    );
+
+
+                if (
+                    isSupported(
+                        symbol
+                    )
+                ) {
+
+                    valid.push(
+                        symbol
+                    );
+
+                } else {
+
+                    invalidSymbols.push(
+                        raw
+                    );
+                }
+            }
+
+
+            managedSymbols.clear();
+
+
+            for (
+                const symbol of new Set(
+                    valid
+                )
+            ) {
+
+                managedSymbols.add(
+                    symbol
+                );
+            }
+
 
             console.log(
-                "============================================================"
+                "AUTOMATIC TRADER SELECTION UPDATED:",
+                managedList()
             );
 
 
-            return res.json({
+            res.json({
 
                 success:
                     true,
 
-                symbol,
+                count:
+                    managedSymbols.size,
 
                 symbols:
-                    Array.from(
-                        selectedAutoSymbols
-                    ),
+                    managedList(),
 
-                message:
-                    `Automatic trading selected: ${symbol}`
+                invalidSymbols
             });
-
 
         } catch (error) {
 
-            console.error(
-                "AUTOMATIC SYMBOL SELECTION ERROR:",
-                error.message
-            );
+            res.status(
+                500
+            ).json({
 
+                success:
+                    false,
 
-            return res
-                .status(400)
-                .json({
-
-                    success:
-                        false,
-
-                    error:
-                        error.message
-                });
+                error:
+                    error.message
+            });
         }
     }
 );
 
 
-// ============================================================
-// GET AUTOMATIC SYMBOL
-// ============================================================
-
-app.get(
-    "/automatic-trader/selection",
+app.post(
+    "/automatic-trader/clear",
     (req, res) => {
 
-        return res.json({
+        const previous =
+            managedList();
+
+
+        managedSymbols.clear();
+
+
+        res.json({
 
             success:
                 true,
 
-            symbols:
-                Array.from(
-                    selectedAutoSymbols
-                ),
+            message:
+                "Managed symbols cleared. Existing WEEX positions were NOT closed.",
 
-            symbol:
-                Array.from(
-                    selectedAutoSymbols
-                )[0] || null
+            count:
+                0,
+
+            symbols:
+                [],
+
+            previous
         });
     }
 );
 
 
 // ============================================================
-// AUTOMATIC HOURLY TRADER
-// ============================================================
-//
-// Every automatic cycle:
-//
-// 1. Get ONLY frontend-selected symbol(s).
-// 2. Get current WEEX position.
-// 3. Check LONG order book.
-// 4. Check SHORT order book.
-// 5. Compare order-book direction with position.
-// 6. If opposite -> processSignal() handles reversal.
-// 7. If flat -> processSignal() opens supported direction.
-// 8. If neutral -> do nothing.
-//
+// AUTOMATIC MANAGED POSITION TRADER
 // ============================================================
 
-async function runAutomaticTrader(
-    forcedSymbol = null
-) {
+async function runManagedTrader() {
 
     if (
         automaticTraderRunning
     ) {
 
-        console.log("");
-
         console.log(
-            "AUTOMATIC TRADER:"
+            "AUTOMATIC TRADER: previous scan is still running. Skipping."
         );
 
-        console.log(
-            "Previous scan is still running."
-        );
-
-        console.log(
-            "Skipping to prevent overlapping scans."
-        );
 
         return {
 
@@ -453,7 +845,7 @@ async function runAutomaticTrader(
                 true,
 
             reason:
-                "SCAN_ALREADY_RUNNING"
+                "ALREADY_RUNNING"
         };
     }
 
@@ -480,16 +872,6 @@ async function runAutomaticTrader(
         !TRADING_ENABLED
     ) {
 
-        console.log("");
-
-        console.log(
-            "AUTOMATIC TRADER:"
-        );
-
-        console.log(
-            "TRADING_ENABLED=false"
-        );
-
         return {
 
             success:
@@ -504,142 +886,137 @@ async function runAutomaticTrader(
     }
 
 
-    // --------------------------------------------------------
-    // FORCE CHECK
-    // --------------------------------------------------------
-    //
-    // If frontend sends a symbol, use ONLY that symbol.
-    //
-    // This is what the FORCE CHECK button uses.
-    //
-    // --------------------------------------------------------
-
-    let symbols = [];
-
-
-    if (
-        forcedSymbol
-    ) {
-
-        const symbol =
-            validateAutomaticSymbol(
-                forcedSymbol
-            );
-
-
-        // Keep backend selection synchronized
-        // with the frontend.
-        //
-        selectedAutoSymbols.clear();
-
-        selectedAutoSymbols.add(
-            symbol
-        );
-
-
-        symbols = [
-            symbol
-        ];
-
-    } else {
-
-        symbols =
-            Array.from(
-                selectedAutoSymbols
-            );
-    }
-
-
-    // --------------------------------------------------------
-    // NO SYMBOL SELECTED
-    // --------------------------------------------------------
-
-    if (
-        symbols.length === 0
-    ) {
-
-        console.log("");
-
-        console.log(
-            "AUTOMATIC TRADER:"
-        );
-
-        console.log(
-            "NO COIN SELECTED."
-        );
-
-        console.log(
-            "No automatic trade will be placed."
-        );
-
-
-        return {
-
-            success:
-                true,
-
-            skipped:
-                true,
-
-            reason:
-                "NO_SYMBOL_SELECTED",
-
-            symbols: []
-        };
-    }
-
-
     automaticTraderRunning =
         true;
+
 
     automaticTraderLastRun =
         new Date().toISOString();
 
 
-    const results = [];
+    const results =
+        [];
+
+
+    let longActions =
+        0;
+
+    let shortActions =
+        0;
+
+    let stayed =
+        0;
+
+    let flatActions =
+        0;
+
+    let neutral =
+        0;
+
+    let errors =
+        0;
+
+    let discovery =
+        null;
 
 
     try {
 
+        discovery =
+            await discoverLivePositions();
+
+
+        const symbols =
+            managedList();
+
+
         console.log("");
 
-        console.log(
-            "############################################################"
-        );
-
-        console.log(
-            forcedSymbol
-                ? "AUTOMATIC TRADER - FORCE CHECK"
-                : "AUTOMATIC HOURLY TRADER"
-        );
-
-        console.log(
-            "############################################################"
-        );
-
-        console.log(
-            "Time:",
-            new Date().toISOString()
-        );
-
-        console.log(
-            "Selected symbols:",
-            symbols
-        );
-
-        console.log(
-            "IMPORTANT:",
-            "ONLY SELECTED COINS ARE ALLOWED"
-        );
-
-        console.log(
-            "############################################################"
+        section(
+            "AUTOMATIC 2-OF-3 ORDER BOOK POSITION CHECK"
         );
 
 
-        // ====================================================
-        // SCAN ONLY SELECTED COINS
-        // ====================================================
+        console.log(
+            "Total WEEX symbols available:",
+            discovery.totalSymbols
+        );
+
+        console.log(
+            "Active WEEX positions:",
+            discovery.activeCount
+        );
+
+        console.log(
+            "Managed symbols:",
+            symbols.length
+        );
+
+        console.log(
+            "Confirmation depths:",
+            CONFIRMATION_DEPTHS.join(" + ")
+        );
+
+        console.log(
+            "Confirmation required:",
+            "2 OF 3"
+        );
+
+
+        if (
+            symbols.length === 0
+        ) {
+
+            console.log("");
+
+            console.log(
+                "NO ACTIVE WEEX POSITIONS FOUND."
+            );
+
+
+            return {
+
+                success:
+                    true,
+
+                started:
+                    automaticTraderLastRun,
+
+                finished:
+                    new Date().toISOString(),
+
+                totalSymbolsAvailable:
+                    discovery.totalSymbols,
+
+                activePositions:
+                    discovery.activeCount,
+
+                managedSymbols:
+                    0,
+
+                longActions:
+                    0,
+
+                shortActions:
+                    0,
+
+                stayedPositions:
+                    0,
+
+                flatActions:
+                    0,
+
+                neutralSignals:
+                    0,
+
+                errors:
+                    0,
+
+                results:
+                    []
+            };
+        }
+
 
         for (
             const symbol of symbols
@@ -647,64 +1024,109 @@ async function runAutomaticTrader(
 
             try {
 
-                console.log("");
-
-                console.log(
-                    "------------------------------------------------------------"
-                );
-
-                console.log(
-                    "AUTOMATIC SYMBOL SCAN"
-                );
-
-                console.log(
-                    "Symbol:",
-                    symbol
-                );
-
-                console.log(
-                    "------------------------------------------------------------"
-                );
-
-
-                // ------------------------------------------------
-                // GET CURRENT POSITION
-                // ------------------------------------------------
-
                 const position =
                     await getCurrentPosition(
                         symbol
                     );
 
 
-                console.log("");
-
-                console.log(
-                    `${symbol} CURRENT POSITION:`,
-                    position.direction
-                );
+                const positionSide =
+                    getPositionSide(
+                        position
+                    );
 
 
-                // ------------------------------------------------
-                // CHECK LONG
-                // ------------------------------------------------
+                if (
+                    positionSide !== "LONG" &&
+                    positionSide !== "SHORT"
+                ) {
 
-                const longCheck =
-                    await checkOrderBook(
+                    managedSymbols.delete(
+                        symbol
+                    );
+
+
+                    flatActions++;
+
+
+                    results.push({
+
                         symbol,
+
+                        position:
+                            "FLAT",
+
+                        decision:
+                            "NONE",
+
+                        action:
+                            "POSITION_CLOSED",
+
+                        reason:
+                            "WEEX_POSITION_NO_LONGER_ACTIVE"
+                    });
+
+
+                    continue;
+                }
+
+
+                // ------------------------------------------------
+                // ONE 200-LEVEL SNAPSHOT
+                // ------------------------------------------------
+
+                const snapshot =
+                    await getMultiDepthSnapshot(
+                        symbol
+                    );
+
+
+                // ------------------------------------------------
+                // LONG EVALUATION
+                // ------------------------------------------------
+
+                const longDepth =
+                    evaluateMultiDepth(
+                        snapshot.bids,
+                        snapshot.asks,
                         "LONG"
                     );
 
 
                 // ------------------------------------------------
-                // CHECK SHORT
+                // SHORT EVALUATION
                 // ------------------------------------------------
 
-                const shortCheck =
-                    await checkOrderBook(
-                        symbol,
+                const shortDepth =
+                    evaluateMultiDepth(
+                        snapshot.bids,
+                        snapshot.asks,
                         "SHORT"
                     );
+
+
+                // ------------------------------------------------
+                // TWO-OF-THREE CONFIRMATION
+                // ------------------------------------------------
+
+                const longConfirmation =
+                    getTwoOfThreeConfirmation(
+                        longDepth
+                    );
+
+
+                const shortConfirmation =
+                    getTwoOfThreeConfirmation(
+                        shortDepth
+                    );
+
+
+                const longAllowed =
+                    longConfirmation.confirmationPassed;
+
+
+                const shortAllowed =
+                    shortConfirmation.confirmationPassed;
 
 
                 let decision =
@@ -712,16 +1134,16 @@ async function runAutomaticTrader(
 
 
                 if (
-                    longCheck.allowed &&
-                    !shortCheck.allowed
+                    longAllowed &&
+                    !shortAllowed
                 ) {
 
                     decision =
                         "LONG";
 
                 } else if (
-                    shortCheck.allowed &&
-                    !longCheck.allowed
+                    shortAllowed &&
+                    !longAllowed
                 ) {
 
                     decision =
@@ -732,22 +1154,13 @@ async function runAutomaticTrader(
                 console.log("");
 
                 console.log(
-                    `${symbol} AUTOMATIC DECISION`
+                    "MANAGED POSITION CHECK:",
+                    symbol
                 );
 
                 console.log(
-                    "Current position:",
-                    position.direction
-                );
-
-                console.log(
-                    "LONG allowed:",
-                    longCheck.allowed
-                );
-
-                console.log(
-                    "SHORT allowed:",
-                    shortCheck.allowed
+                    "Position:",
+                    positionSide
                 );
 
                 console.log(
@@ -755,42 +1168,48 @@ async function runAutomaticTrader(
                     decision
                 );
 
+                console.log(
+                    "LONG 15/30/60:",
+                    longDepth.results[15]?.filterPass,
+                    longDepth.results[30]?.filterPass,
+                    longDepth.results[60]?.filterPass,
+                    `=> ${longConfirmation.passedCount}/3 PASS`
+                );
 
-                // ------------------------------------------------
-                // NEUTRAL
-                // ------------------------------------------------
+                console.log(
+                    "SHORT 15/30/60:",
+                    shortDepth.results[15]?.filterPass,
+                    shortDepth.results[30]?.filterPass,
+                    shortDepth.results[60]?.filterPass,
+                    `=> ${shortConfirmation.passedCount}/3 PASS`
+                );
+
 
                 if (
-                    decision ===
-                    "NEUTRAL"
+                    decision === "NEUTRAL"
                 ) {
 
-                    console.log("");
-
-                    console.log(
-                        `${symbol}: NO AUTOMATIC TRADE`
-                    );
-
-                    console.log(
-                        "Reason:",
-                        "ORDER BOOK IS NEUTRAL"
-                    );
+                    neutral++;
 
 
                     results.push({
 
                         symbol,
 
-                        currentPosition:
-                            position.direction,
+                        position:
+                            positionSide,
 
                         decision,
 
                         action:
-                            "NONE",
+                            "NO_ACTION",
 
-                        result:
-                            null
+                        reason:
+                            "TWO_OF_THREE_ORDER_BOOK_NEUTRAL",
+
+                        longConfirmation,
+
+                        shortConfirmation
                     });
 
 
@@ -798,94 +1217,176 @@ async function runAutomaticTrader(
                 }
 
 
-                // ------------------------------------------------
-                // PROCESS SIGNAL
-                // ------------------------------------------------
-                //
-                // processSignal() itself checks the position and
-                // performs:
-                //
-                // FLAT -> OPEN
-                //
-                // SAME DIRECTION -> NO NEW ORDER
-                //
-                // OPPOSITE -> CLOSE -> FLAT -> FRESH BOOK -> OPEN
-                //
-                // ------------------------------------------------
+                if (
+                    positionSide === decision
+                ) {
 
-                const result =
-                    await processSignal(
+                    stayed++;
+
+
+                    results.push({
+
                         symbol,
+
+                        position:
+                            positionSide,
+
+                        decision,
+
+                        action:
+                            `STAY_${decision}`,
+
+                        reason:
+                            `TWO_OF_THREE_ORDER_FLOW_SUPPORTS_EXISTING_${decision}`,
+
+                        longConfirmation,
+
+                        shortConfirmation
+                    });
+
+
+                    continue;
+                }
+
+
+                if (
+                    positionSide !== decision
+                ) {
+
+                    if (
+                        decision === "LONG"
+                    ) {
+
+                        longActions++;
+
+                    } else {
+
+                        shortActions++;
+                    }
+
+
+                    console.log("");
+
+                    console.log(
+                        "AUTOMATIC 2-OF-3 REVERSAL REQUIRED"
+                    );
+
+                    console.log(
+                        "Symbol:",
+                        symbol
+                    );
+
+                    console.log(
+                        "Current:",
+                        positionSide
+                    );
+
+                    console.log(
+                        "New:",
                         decision
                     );
 
 
-                console.log("");
-
-                console.log(
-                    `${symbol}: AUTOMATIC RESULT`
-                );
-
-                console.log(
-                    pretty(
-                        result
-                    )
-                );
+                    const result =
+                        await processSignal(
+                            symbol,
+                            decision
+                        );
 
 
-                results.push({
+                    results.push({
 
-                    symbol,
+                        symbol,
 
-                    currentPosition:
-                        position.direction,
+                        position:
+                            positionSide,
 
-                    decision,
-
-                    action:
                         decision,
 
-                    result
-                });
+                        action:
+                            `FLIP_${decision}`,
 
+                        longConfirmation,
+
+                        shortConfirmation,
+
+                        result
+                    });
+
+
+                    continue;
+                }
 
             } catch (error) {
 
-                console.error("");
+                errors++;
+
 
                 console.error(
-                    `${symbol}: AUTOMATIC TRADER ERROR`
-                );
-
-                console.error(
+                    `${symbol}: AUTOMATIC POSITION CHECK ERROR`,
                     error.message
                 );
 
 
-                if (
-                    error.data
-                ) {
-
-                    console.error(
-                        pretty(
-                            error.data
-                        )
-                    );
-                }
-
-
                 results.push({
 
                     symbol,
 
-                    success:
-                        false,
+                    action:
+                        "ERROR",
 
                     error:
                         error.message
                 });
             }
         }
+
+
+        const summary = {
+
+            success:
+                true,
+
+            started:
+                automaticTraderLastRun,
+
+            finished:
+                new Date().toISOString(),
+
+            totalSymbolsAvailable:
+                discovery.totalSymbols,
+
+            activePositions:
+                discovery.activeCount,
+
+            managedSymbols:
+                symbols.length,
+
+            confirmationDepths:
+                [...CONFIRMATION_DEPTHS],
+
+            confirmationRequired:
+                2,
+
+            confirmationRule:
+                "2_OF_3",
+
+            longActions,
+
+            shortActions,
+
+            stayedPositions:
+                stayed,
+
+            flatActions,
+
+            neutralSignals:
+                neutral,
+
+            errors,
+
+            results
+        };
 
 
         console.log("");
@@ -895,9 +1396,7 @@ async function runAutomaticTrader(
         );
 
         console.log(
-            forcedSymbol
-                ? "FORCE CHECK COMPLETE"
-                : "AUTOMATIC HOURLY TRADER COMPLETE"
+            "AUTOMATIC 2-OF-3 POSITION CHECK COMPLETE"
         );
 
         console.log(
@@ -905,18 +1404,53 @@ async function runAutomaticTrader(
         );
 
         console.log(
-            "Selected symbols:",
+            "Confirmation:",
+            "2 OF 3"
+        );
+
+        console.log(
+            "Depths:",
+            CONFIRMATION_DEPTHS.join(" + ")
+        );
+
+        console.log(
+            "Total WEEX symbols:",
+            discovery.totalSymbols
+        );
+
+        console.log(
+            "Active positions:",
+            discovery.activeCount
+        );
+
+        console.log(
+            "Managed symbols:",
             symbols.length
         );
 
         console.log(
-            "Symbols:",
-            symbols
+            "LONG actions:",
+            longActions
         );
 
         console.log(
-            "Completed:",
-            new Date().toISOString()
+            "SHORT actions:",
+            shortActions
+        );
+
+        console.log(
+            "Stayed:",
+            stayed
+        );
+
+        console.log(
+            "Neutral:",
+            neutral
+        );
+
+        console.log(
+            "Errors:",
+            errors
         );
 
         console.log(
@@ -924,21 +1458,7 @@ async function runAutomaticTrader(
         );
 
 
-        return {
-
-            success:
-                true,
-
-            forced:
-                Boolean(
-                    forcedSymbol
-                ),
-
-            symbols,
-
-            results
-        };
-
+        return summary;
 
     } finally {
 
@@ -956,42 +1476,20 @@ async function runAutomaticTrader(
 
 
 // ============================================================
-// START AUTOMATIC HOURLY TRADER
+// START AUTOMATIC TRADER
 // ============================================================
 
 function startAutomaticTrader() {
 
     if (
-        !AUTO_TRADING_ENABLED
-    ) {
-
-        console.log("");
-
-        console.log(
-            "AUTOMATIC TRADER:"
-        );
-
-        console.log(
-            "DISABLED in config.js"
-        );
-
-        return;
-    }
-
-
-    if (
+        !AUTO_TRADING_ENABLED ||
         !TRADING_ENABLED
     ) {
 
-        console.log("");
-
         console.log(
-            "AUTOMATIC TRADER:"
+            "AUTOMATIC TRADER NOT STARTED"
         );
 
-        console.log(
-            "NOT STARTED because TRADING_ENABLED=false"
-        );
 
         return;
     }
@@ -1007,28 +1505,6 @@ function startAutomaticTrader() {
     }
 
 
-    console.log("");
-
-    section(
-        "AUTOMATIC HOURLY TRADER STARTED"
-    );
-
-    console.log(
-        "Interval:",
-        `${AUTO_TRADING_INTERVAL_MS / 60000} minutes`
-    );
-
-    console.log(
-        "Mode:",
-        "SELECTED COIN ONLY"
-    );
-
-    console.log(
-        "First automatic scan:",
-        "1 interval after startup"
-    );
-
-
     automaticTraderNextRun =
         new Date(
             Date.now() +
@@ -1040,17 +1516,12 @@ function startAutomaticTrader() {
         setInterval(
             () => {
 
-                runAutomaticTrader()
+                runManagedTrader()
                     .catch(
                         error => {
 
-                            console.error("");
-
                             console.error(
-                                "AUTOMATIC TRADER FATAL ERROR"
-                            );
-
-                            console.error(
+                                "AUTOMATIC TRADER FATAL ERROR:",
                                 error.message
                             );
                         }
@@ -1059,6 +1530,12 @@ function startAutomaticTrader() {
             },
             AUTO_TRADING_INTERVAL_MS
         );
+
+
+    console.log(
+        "AUTOMATIC TRADER STARTED:",
+        `${AUTO_TRADING_INTERVAL_MS / 60000} minutes`
+    );
 }
 
 
@@ -1068,7 +1545,7 @@ function startAutomaticTrader() {
 
 app.post(
     "/webhook",
-    async (req, res) => {
+    (req, res) => {
 
         section(
             "TRADINGVIEW WEBHOOK RECEIVED"
@@ -1076,7 +1553,9 @@ app.post(
 
 
         console.log(
-            pretty(req.body)
+            pretty(
+                req.body
+            )
         );
 
 
@@ -1090,10 +1569,20 @@ app.post(
 
             const action =
                 String(
-                    req.body?.action || ""
+                    req.body?.action ||
+                    ""
                 )
                     .trim()
                     .toUpperCase();
+
+
+            const validActions = [
+                "LONG",
+                "SHORT",
+                "CLOSE",
+                "CLOSE_LONG",
+                "CLOSE_SHORT"
+            ];
 
 
             console.log(
@@ -1113,33 +1602,24 @@ app.post(
 
 
             if (
-                !SUPPORTED_SYMBOLS.has(
+                !isSupported(
                     symbol
                 )
             ) {
 
-                return res
-                    .status(400)
-                    .json({
+                return res.status(
+                    400
+                ).json({
 
-                        success:
-                            false,
+                    success:
+                        false,
 
-                        error:
-                            "Unsupported or unavailable WEEX symbol",
+                    error:
+                        "Unsupported or unavailable WEEX symbol",
 
-                        symbol
-                    });
+                    symbol
+                });
             }
-
-
-            const validActions = [
-                "LONG",
-                "SHORT",
-                "CLOSE",
-                "CLOSE_LONG",
-                "CLOSE_SHORT"
-            ];
 
 
             if (
@@ -1148,52 +1628,42 @@ app.post(
                 )
             ) {
 
-                return res
-                    .status(400)
-                    .json({
+                return res.status(
+                    400
+                ).json({
 
-                        success:
-                            false,
+                    success:
+                        false,
 
-                        error:
-                            "Invalid action"
-                    });
+                    error:
+                        "Invalid action"
+                });
             }
 
 
-            // ------------------------------------------------
-            // IMMEDIATE ACK
-            // ------------------------------------------------
+            res.status(
+                200
+            ).json({
 
-            res
-                .status(200)
-                .json({
+                success:
+                    true,
 
-                    success:
-                        true,
+                accepted:
+                    true,
 
-                    accepted:
-                        true,
+                symbol,
 
-                    symbol,
+                action,
 
-                    action,
+                message:
+                    "Signal accepted for background processing."
+            });
 
-                    message:
-                        "Signal accepted for background processing."
-                });
-
-
-            console.log("");
 
             console.log(
                 `WEBHOOK ACK SENT: ${symbol} ${action}`
             );
 
-
-            // ------------------------------------------------
-            // BACKGROUND PROCESS
-            // ------------------------------------------------
 
             processSignal(
                 symbol,
@@ -1201,6 +1671,29 @@ app.post(
             )
                 .then(
                     result => {
+
+                        if (
+                            action === "LONG" ||
+                            action === "SHORT"
+                        ) {
+
+                            if (
+                                result?.success !== false ||
+                                result?.action === "NO_ACTION"
+                            ) {
+
+                                addManagedSymbol(
+                                    symbol
+                                );
+                            }
+
+                        } else {
+
+                            removeManagedSymbol(
+                                symbol
+                            );
+                        }
+
 
                         console.log("");
 
@@ -1223,7 +1716,19 @@ app.post(
                         );
 
                         console.log(
-                            pretty(result)
+                            pretty(
+                                result
+                            )
+                        );
+
+                        console.log(
+                            "ORDER FLOW STATISTICS:"
+                        );
+
+                        console.log(
+                            pretty(
+                                getOrderBookStats()
+                            )
                         );
 
                         console.log(
@@ -1278,7 +1783,6 @@ app.post(
                     }
                 );
 
-
         } catch (error) {
 
             console.error(
@@ -1291,16 +1795,16 @@ app.post(
                 !res.headersSent
             ) {
 
-                return res
-                    .status(500)
-                    .json({
+                return res.status(
+                    500
+                ).json({
 
-                        success:
-                            false,
+                    success:
+                        false,
 
-                        error:
-                            error.message
-                    });
+                    error:
+                        error.message
+                });
             }
         }
     }
@@ -1308,7 +1812,7 @@ app.post(
 
 
 // ============================================================
-// MANUAL SIGNAL HANDLER
+// MANUAL SIGNALS
 // ============================================================
 
 async function handleManualSignal(
@@ -1327,24 +1831,31 @@ async function handleManualSignal(
 
 
         if (
-            !SUPPORTED_SYMBOLS.has(
+            !isSupported(
                 symbol
             )
         ) {
 
-            return res
-                .status(400)
-                .json({
+            return res.status(
+                400
+            ).json({
 
-                    success:
-                        false,
+                success:
+                    false,
 
-                    error:
-                        "Invalid or unavailable WEEX symbol",
+                error:
+                    "Invalid or unavailable WEEX symbol",
 
-                    symbol
-                });
+                symbol
+            });
         }
+
+
+        console.log(
+            "MANUAL SIGNAL:",
+            symbol,
+            action
+        );
 
 
         const result =
@@ -1354,20 +1865,44 @@ async function handleManualSignal(
             );
 
 
-        return res.json(
-            result
-        );
+        if (
+            (
+                action === "LONG" ||
+                action === "SHORT"
+            ) &&
+            result?.success !== false
+        ) {
 
+            addManagedSymbol(
+                symbol
+            );
+        }
+
+
+        if (
+            action === "CLOSE" ||
+            action === "CLOSE_LONG" ||
+            action === "CLOSE_SHORT"
+        ) {
+
+            removeManagedSymbol(
+                symbol
+            );
+        }
+
+
+        res.json({
+
+            ...result,
+
+            managedSymbols:
+                managedList()
+        });
 
     } catch (error) {
 
-        console.error("");
-
         console.error(
-            `MANUAL ${action} ERROR`
-        );
-
-        console.error(
+            `MANUAL ${action} ERROR:`,
             error.message
         );
 
@@ -1384,20 +1919,20 @@ async function handleManualSignal(
         }
 
 
-        return res
-            .status(500)
-            .json({
+        res.status(
+            500
+        ).json({
 
-                success:
-                    false,
+            success:
+                false,
 
-                error:
-                    error.message,
+            error:
+                error.message,
 
-                weex:
-                    error.data ||
-                    null
-            });
+            weex:
+                error.data ||
+                null
+        });
     }
 }
 
@@ -1436,12 +1971,15 @@ app.post(
 
 
 // ============================================================
-// TEST ORDER BOOK
+// READ-ONLY MULTI-DEPTH ORDER BOOK TEST
 // ============================================================
 
 app.get(
     "/test-orderbook",
-    async (req, res) => {
+    async (
+        req,
+        res
+    ) => {
 
         try {
 
@@ -1453,30 +1991,31 @@ app.get(
 
             const direction =
                 String(
-                    req.query?.direction || ""
+                    req.query?.direction ||
+                    ""
                 )
                     .trim()
                     .toUpperCase();
 
 
             if (
-                !SUPPORTED_SYMBOLS.has(
+                !isSupported(
                     symbol
                 )
             ) {
 
-                return res
-                    .status(400)
-                    .json({
+                return res.status(
+                    400
+                ).json({
 
-                        success:
-                            false,
+                    success:
+                        false,
 
-                        error:
-                            "Invalid or unavailable WEEX symbol",
+                    error:
+                        "Invalid or unavailable WEEX symbol",
 
-                        symbol
-                    });
+                    symbol
+                });
             }
 
 
@@ -1485,23 +2024,23 @@ app.get(
                 direction !== "SHORT"
             ) {
 
-                return res
-                    .status(400)
-                    .json({
+                return res.status(
+                    400
+                ).json({
 
-                        success:
-                            false,
+                    success:
+                        false,
 
-                        error:
-                            "direction must be LONG or SHORT",
+                    error:
+                        "direction must be LONG or SHORT",
 
-                        direction
-                    });
+                    direction
+                });
             }
 
 
             section(
-                "READ-ONLY ORDER BOOK TEST",
+                "READ-ONLY 2-OF-3 ORDER BOOK TEST",
                 "#"
             );
 
@@ -1517,6 +2056,21 @@ app.get(
             );
 
             console.log(
+                "WEEX request:",
+                WEEX_REQUEST_DEPTH
+            );
+
+            console.log(
+                "Confirmation:",
+                CONFIRMATION_DEPTHS.join(" + ")
+            );
+
+            console.log(
+                "Rule:",
+                "2 OF 3"
+            );
+
+            console.log(
                 "TRADING:",
                 "NOT USED"
             );
@@ -1527,10 +2081,23 @@ app.get(
             );
 
 
-            const result =
-                await checkOrderBook(
-                    symbol,
+            const snapshot =
+                await getMultiDepthSnapshot(
+                    symbol
+                );
+
+
+            const multiDepth =
+                evaluateMultiDepth(
+                    snapshot.bids,
+                    snapshot.asks,
                     direction
+                );
+
+
+            const confirmation =
+                getTwoOfThreeConfirmation(
+                    multiDepth
                 );
 
 
@@ -1548,24 +2115,48 @@ app.get(
                 orderPlaced:
                     false,
 
+                countedInStatistics:
+                    false,
+
                 symbol,
 
                 direction,
 
-                orderBook:
-                    result
-            });
+                requestedDepth:
+                    WEEX_REQUEST_DEPTH,
 
+                confirmationDepths:
+                    [...CONFIRMATION_DEPTHS],
+
+                confirmationRequired:
+                    2,
+
+                confirmationRule:
+                    "2_OF_3",
+
+                confirmationPassed:
+                    confirmation.confirmationPassed,
+
+                passedDepths:
+                    confirmation.passedDepths,
+
+                failedDepths:
+                    confirmation.failedDepths,
+
+                passedCount:
+                    confirmation.passedCount,
+
+                confirmationReason:
+                    confirmation.confirmationReason,
+
+                results:
+                    multiDepth.results
+            });
 
         } catch (error) {
 
-            console.error("");
-
             console.error(
-                "ORDER BOOK TEST ERROR"
-            );
-
-            console.error(
+                "ORDER BOOK TEST ERROR:",
                 error.message
             );
 
@@ -1582,26 +2173,29 @@ app.get(
             }
 
 
-            return res
-                .status(500)
-                .json({
+            return res.status(
+                500
+            ).json({
 
-                    success:
-                        false,
+                success:
+                    false,
 
-                    readOnly:
-                        true,
+                readOnly:
+                    true,
 
-                    orderPlaced:
-                        false,
+                orderPlaced:
+                    false,
 
-                    error:
-                        error.message,
+                countedInStatistics:
+                    false,
 
-                    weex:
-                        error.data ||
-                        null
-                });
+                error:
+                    error.message,
+
+                weex:
+                    error.data ||
+                    null
+            });
         }
     }
 );
@@ -1613,9 +2207,12 @@ app.get(
 
 app.get(
     "/orderflow-stats",
-    (req, res) => {
+    (
+        req,
+        res
+    ) => {
 
-        return res.json({
+        res.json({
 
             success:
                 true,
@@ -1627,25 +2224,17 @@ app.get(
 );
 
 
-// ============================================================
-// RESET ORDER FLOW STATISTICS
-// ============================================================
-
 app.post(
     "/orderflow-stats/reset",
-    (req, res) => {
+    (
+        req,
+        res
+    ) => {
 
         resetOrderBookStats();
 
 
-        console.log("");
-
-        console.log(
-            "ORDER FLOW STATISTICS RESET"
-        );
-
-
-        return res.json({
+        res.json({
 
             success:
                 true,
@@ -1666,7 +2255,10 @@ app.post(
 
 app.get(
     "/symbols",
-    (req, res) => {
+    (
+        req,
+        res
+    ) => {
 
         const symbols =
             Array.from(
@@ -1706,12 +2298,21 @@ app.get(
                         maxOrderSize:
                             CONTRACT_INFO[
                                 symbol
-                            ]?.maxOrderSize
+                            ]?.maxOrderSize,
+
+                        managed:
+                            managedSymbols.has(
+                                symbol
+                            )
                     })
                 );
 
 
-        return res.json({
+        const automatic =
+            getAutomaticTradingStatus();
+
+
+        res.json({
 
             count:
                 symbols.length,
@@ -1727,10 +2328,29 @@ app.get(
                 DEFAULT_LEVERAGE,
 
             orderBook:
-                getStatusConfig()
-                    .orderBook,
+                getStatusConfig().orderBook,
+
+            multiDepth: {
+
+                apiRequestDepth:
+                    WEEX_REQUEST_DEPTH,
+
+                confirmationDepths:
+                    [...CONFIRMATION_DEPTHS],
+
+                confirmationRequired:
+                    2,
+
+                confirmationRule:
+                    "2_OF_3"
+            },
+
+            orderFlowStatistics:
+                getOrderBookStats(),
 
             automaticTrader: {
+
+                ...automatic,
 
                 enabled:
                     AUTO_TRADING_ENABLED,
@@ -1751,15 +2371,8 @@ app.get(
                 nextRun:
                     automaticTraderNextRun,
 
-                selectedSymbols:
-                    Array.from(
-                        selectedAutoSymbols
-                    ),
-
-                selectedSymbol:
-                    Array.from(
-                        selectedAutoSymbols
-                    )[0] || null
+                managedSymbols:
+                    managedList()
             },
 
             symbols
@@ -1774,14 +2387,17 @@ app.get(
 
 app.post(
     "/refresh-symbols",
-    async (req, res) => {
+    async (
+        req,
+        res
+    ) => {
 
         try {
 
             await loadAllContracts();
 
 
-            return res.json({
+            res.json({
 
                 success:
                     true,
@@ -1795,62 +2411,65 @@ app.post(
                     ).sort()
             });
 
-
         } catch (error) {
 
-            return res
-                .status(500)
-                .json({
+            res.status(
+                500
+            ).json({
 
-                    success:
-                        false,
+                success:
+                    false,
 
-                    error:
-                        error.message
-                });
+                error:
+                    error.message
+            });
         }
     }
 );
 
 
 // ============================================================
-// AUTOMATIC TRADER MANUAL / FORCE RUN
-// ============================================================
-//
-// POST /automatic-trader/run
-//
-// Body:
-//
-// {
-//     "symbol": "WIFUSDT"
-// }
-//
-// If symbol is supplied:
-//   -> force check WIFUSDT
-//
-// If no symbol:
-//   -> check backend-selected symbol
-//
+// AUTOMATIC TRADER CONTROL
 // ============================================================
 
 app.post(
     "/automatic-trader/run",
-    async (req, res) => {
+    (
+        req,
+        res
+    ) => {
 
         if (
             !AUTO_TRADING_ENABLED
         ) {
 
-            return res
-                .status(400)
-                .json({
+            return res.status(
+                400
+            ).json({
 
-                    success:
-                        false,
+                success:
+                    false,
 
-                    error:
-                        "Automatic trader is disabled in config.js"
-                });
+                error:
+                    "Automatic trader is disabled in config.js"
+            });
+        }
+
+
+        if (
+            !TRADING_ENABLED
+        ) {
+
+            return res.status(
+                400
+            ).json({
+
+                success:
+                    false,
+
+                error:
+                    "Trading is disabled in config.js"
+            });
         }
 
 
@@ -1858,98 +2477,54 @@ app.post(
             automaticTraderRunning
         ) {
 
-            return res
-                .status(409)
-                .json({
-
-                    success:
-                        false,
-
-                    error:
-                        "Automatic trader is already running."
-                });
-        }
-
-
-        let symbol =
-            null;
-
-
-        try {
-
-            if (
-                req.body?.symbol
-            ) {
-
-                symbol =
-                    validateAutomaticSymbol(
-                        req.body.symbol
-                    );
-            }
-
-
-            runAutomaticTrader(
-                symbol
-            )
-                .catch(
-                    error => {
-
-                        console.error("");
-
-                        console.error(
-                            "MANUAL AUTOMATIC TRADER ERROR"
-                        );
-
-                        console.error(
-                            error.message
-                        );
-                    }
-                );
-
-
-            return res.json({
+            return res.status(
+                409
+            ).json({
 
                 success:
-                    true,
+                    false,
 
-                accepted:
-                    true,
-
-                symbol,
-
-                message:
-                    symbol
-                        ? `Force check started for ${symbol}.`
-                        : "Automatic trader scan started."
+                error:
+                    "Automatic trader is already running."
             });
-
-
-        } catch (error) {
-
-            return res
-                .status(400)
-                .json({
-
-                    success:
-                        false,
-
-                    error:
-                        error.message
-                });
         }
+
+
+        runManagedTrader()
+            .catch(
+                error => {
+
+                    console.error(
+                        "MANUAL AUTOMATIC TRADER ERROR:",
+                        error.message
+                    );
+                }
+            );
+
+
+        res.json({
+
+            success:
+                true,
+
+            accepted:
+                true,
+
+            message:
+                "Automatic 2-of-3 live-position scan started in background."
+        });
     }
 );
 
 
-// ============================================================
-// AUTOMATIC TRADER STATUS
-// ============================================================
-
 app.get(
     "/automatic-trader/status",
-    (req, res) => {
+    (
+        req,
+        res
+    ) => {
 
-        return res.json({
+        res.json({
 
             success:
                 true,
@@ -1976,106 +2551,74 @@ app.get(
             nextRun:
                 automaticTraderNextRun,
 
-            selectedSymbols:
-                Array.from(
-                    selectedAutoSymbols
-                ),
+            managedSymbols:
+                managedList(),
 
-            selectedSymbol:
-                Array.from(
-                    selectedAutoSymbols
-                )[0] || null,
+            managedCount:
+                managedSymbols.size,
 
-            symbols:
-                SUPPORTED_SYMBOLS.size
+            totalAvailableSymbols:
+                SUPPORTED_SYMBOLS.size,
+
+            multiDepthConfirmation:
+                [...CONFIRMATION_DEPTHS],
+
+            multiDepthConfirmationRequired:
+                2,
+
+            multiDepthConfirmationRule:
+                "2_OF_3",
+
+            tradingModuleAutomaticStatus:
+                getAutomaticTradingStatus()
         });
     }
 );
 
 
 // ============================================================
-// AUTOMATIC TRADER POSITIONS
-// ============================================================
-//
-// Returns positions ONLY for the selected automatic coins.
-//
-// This avoids requesting 200+ position endpoints.
-//
+// EXISTING AUTOMATIC ORDER-FLOW MODULE
 // ============================================================
 
-app.get(
-    "/automatic-trader/positions",
-    async (req, res) => {
+app.post(
+    "/automatic-orderflow/run",
+    async (
+        req,
+        res
+    ) => {
 
         try {
 
-            const symbols =
-                Array.from(
-                    selectedAutoSymbols
-                );
+            const result =
+                await runAutomaticTradingCycle();
 
 
-            const positions = [];
-
-
-            for (
-                const symbol of symbols
-            ) {
-
-                try {
-
-                    const position =
-                        await getCurrentPosition(
-                            symbol
-                        );
-
-
-                    positions.push(
-                        position
-                    );
-
-                } catch (error) {
-
-                    positions.push({
-
-                        symbol,
-
-                        direction:
-                            "ERROR",
-
-                        quantity:
-                            0,
-
-                        error:
-                            error.message
-                    });
-                }
-            }
-
-
-            return res.json({
-
-                success:
-                    true,
-
-                symbols,
-
-                positions
-            });
-
+            res.json(
+                result
+            );
 
         } catch (error) {
 
-            return res
-                .status(500)
-                .json({
+            console.error(
+                "AUTOMATIC ORDER-FLOW ERROR:",
+                error.message
+            );
 
-                    success:
-                        false,
 
-                    error:
-                        error.message
-                });
+            res.status(
+                500
+            ).json({
+
+                success:
+                    false,
+
+                error:
+                    error.message,
+
+                weex:
+                    error.data ||
+                    null
+            });
         }
     }
 );
@@ -2084,10 +2627,25 @@ app.get(
 // ============================================================
 // LIVE ORDER BOOK
 // ============================================================
+//
+// ONE WEEX 200-LEVEL SNAPSHOT.
+//
+// Trading confirmation:
+//
+//     15
+//     30
+//     60
+//
+// AT LEAST 2 OF 3 MUST PASS.
+//
+// ============================================================
 
 app.get(
     "/live-orderbook",
-    async (req, res) => {
+    async (
+        req,
+        res
+    ) => {
 
         try {
 
@@ -2098,38 +2656,82 @@ app.get(
 
 
             if (
-                !SUPPORTED_SYMBOLS.has(
+                !isSupported(
                     symbol
                 )
             ) {
 
-                return res
-                    .status(400)
-                    .json({
+                return res.status(
+                    400
+                ).json({
 
-                        success:
-                            false,
+                    success:
+                        false,
 
-                        error:
-                            "Invalid or unavailable WEEX symbol",
+                    error:
+                        "Invalid or unavailable WEEX symbol",
 
-                        symbol
-                    });
+                    symbol
+                });
             }
 
 
-            const longCheck =
-                await checkOrderBook(
-                    symbol,
+            // ------------------------------------------------
+            // ONE WEEX REQUEST
+            // ------------------------------------------------
+
+            const snapshot =
+                await getMultiDepthSnapshot(
+                    symbol
+                );
+
+
+            // ------------------------------------------------
+            // LONG
+            // ------------------------------------------------
+
+            const longDepth =
+                evaluateMultiDepth(
+                    snapshot.bids,
+                    snapshot.asks,
                     "LONG"
                 );
 
 
-            const shortCheck =
-                await checkOrderBook(
-                    symbol,
+            // ------------------------------------------------
+            // SHORT
+            // ------------------------------------------------
+
+            const shortDepth =
+                evaluateMultiDepth(
+                    snapshot.bids,
+                    snapshot.asks,
                     "SHORT"
                 );
+
+
+            // ------------------------------------------------
+            // TWO-OF-THREE
+            // ------------------------------------------------
+
+            const longConfirmation =
+                getTwoOfThreeConfirmation(
+                    longDepth
+                );
+
+
+            const shortConfirmation =
+                getTwoOfThreeConfirmation(
+                    shortDepth
+                );
+
+
+            const longAllowed =
+                longConfirmation.confirmationPassed;
+
+
+            const shortAllowed =
+                shortConfirmation.confirmationPassed;
 
 
             let decision =
@@ -2137,16 +2739,16 @@ app.get(
 
 
             if (
-                longCheck.allowed &&
-                !shortCheck.allowed
+                longAllowed &&
+                !shortAllowed
             ) {
 
                 decision =
                     "LONG";
 
             } else if (
-                shortCheck.allowed &&
-                !longCheck.allowed
+                shortAllowed &&
+                !longAllowed
             ) {
 
                 decision =
@@ -2154,7 +2756,11 @@ app.get(
             }
 
 
-            return res.json({
+            const primaryLong =
+                longDepth.results[15];
+
+
+            res.json({
 
                 success:
                     true,
@@ -2167,40 +2773,84 @@ app.get(
 
                 symbol,
 
+                managed:
+                    managedSymbols.has(
+                        symbol
+                    ),
+
                 decision,
+
+                requestedDepth:
+                    WEEX_REQUEST_DEPTH,
+
+                confirmationDepths:
+                    [...CONFIRMATION_DEPTHS],
+
+                confirmationRequired:
+                    2,
+
+                confirmationRule:
+                    "2_OF_3",
+
+                multiDepth: {
+
+                    long:
+                        longDepth,
+
+                    short:
+                        shortDepth
+                },
+
+                confirmation: {
+
+                    long:
+                        longConfirmation,
+
+                    short:
+                        shortConfirmation
+                },
 
                 orderBook: {
 
                     bidLiquidity:
-                        longCheck.bidLiquidity,
+                        primaryLong?.bidLiquidity ?? 0,
 
                     askLiquidity:
-                        longCheck.askLiquidity,
+                        primaryLong?.askLiquidity ?? 0,
 
                     totalLiquidity:
-                        longCheck.bidLiquidity +
-                        longCheck.askLiquidity,
+                        primaryLong?.totalLiquidity ?? 0,
 
                     bidPercentage:
-                        longCheck.bidPercentage,
+                        primaryLong?.bidPercentage ?? 0,
 
                     askPercentage:
-                        longCheck.askPercentage,
+                        primaryLong?.askPercentage ?? 0,
 
                     imbalance:
-                        longCheck.imbalance,
+                        primaryLong?.imbalance ?? 0,
 
                     bidAskRatio:
-                        longCheck.bidAskRatio,
+                        primaryLong?.bidAskRatio ?? 0,
 
                     askBidRatio:
-                        longCheck.askBidRatio,
+                        primaryLong?.askBidRatio ?? 0,
 
-                    longAllowed:
-                        longCheck.allowed,
+                    longAllowed,
 
-                    shortAllowed:
-                        shortCheck.allowed,
+                    shortAllowed,
+
+                    longPassedDepths:
+                        longConfirmation.passedDepths,
+
+                    shortPassedDepths:
+                        shortConfirmation.passedDepths,
+
+                    longPassedCount:
+                        longConfirmation.passedCount,
+
+                    shortPassedCount:
+                        shortConfirmation.passedCount,
 
                     longMinImbalance:
                         LONG_MIN_IMBALANCE,
@@ -2208,46 +2858,184 @@ app.get(
                     shortMaxImbalance:
                         SHORT_MAX_IMBALANCE,
 
+                    minBidAskRatio:
+                        MIN_BID_ASK_RATIO,
+
+                    minAskBidRatio:
+                        MIN_ASK_BID_RATIO,
+
                     depth:
-                        ORDER_BOOK_DEPTH
+                        WEEX_REQUEST_DEPTH
+                },
+
+                depths: {
+
+                    long:
+                        longDepth.results,
+
+                    short:
+                        shortDepth.results
+                },
+
+                dashboard: {
+
+                    depth15: {
+
+                        long:
+                            longDepth.results[15],
+
+                        short:
+                            shortDepth.results[15]
+                    },
+
+                    depth30: {
+
+                        long:
+                            longDepth.results[30],
+
+                        short:
+                            shortDepth.results[30]
+                    },
+
+                    depth60: {
+
+                        long:
+                            longDepth.results[60],
+
+                        short:
+                            shortDepth.results[60]
+                    },
+
+                    depths: {
+
+                        15: {
+
+                            long:
+                                longDepth.results[15],
+
+                            short:
+                                shortDepth.results[15]
+                        },
+
+                        30: {
+
+                            long:
+                                longDepth.results[30],
+
+                            short:
+                                shortDepth.results[30]
+                        },
+
+                        60: {
+
+                            long:
+                                longDepth.results[60],
+
+                            short:
+                                shortDepth.results[60]
+                        }
+                    },
+
+                    decision,
+
+                    longAllowed,
+
+                    shortAllowed,
+
+                    longPassedDepths:
+                        longConfirmation.passedDepths,
+
+                    shortPassedDepths:
+                        shortConfirmation.passedDepths,
+
+                    longPassedCount:
+                        longConfirmation.passedCount,
+
+                    shortPassedCount:
+                        shortConfirmation.passedCount,
+
+                    confirmationDepths:
+                        [...CONFIRMATION_DEPTHS],
+
+                    confirmationRequired:
+                        2,
+
+                    confirmationRule:
+                        "2_OF_3",
+
+                    timestamp:
+                        new Date().toISOString()
                 }
-
             });
-
 
         } catch (error) {
 
             console.error("");
 
             console.error(
+                "============================================================"
+            );
+
+            console.error(
                 "LIVE ORDER BOOK ERROR"
             );
 
             console.error(
+                "============================================================"
+            );
+
+            console.error(
+                "Symbol:",
+                req.query?.symbol
+            );
+
+            console.error(
+                "Error:",
                 error.message
             );
 
 
-            return res
-                .status(500)
-                .json({
+            if (
+                error.data
+            ) {
 
-                    success:
-                        false,
+                console.error(
+                    "WEEX DATA:"
+                );
 
-                    readOnly:
-                        true,
+                console.error(
+                    pretty(
+                        error.data
+                    )
+                );
+            }
 
-                    orderPlaced:
-                        false,
 
-                    error:
-                        error.message,
+            console.error(
+                "============================================================"
+            );
 
-                    weex:
-                        error.data ||
-                        null
-                });
+
+            res.status(
+                500
+            ).json({
+
+                success:
+                    false,
+
+                readOnly:
+                    true,
+
+                orderPlaced:
+                    false,
+
+                error:
+                    error.message,
+
+                weex:
+                    error.data ||
+                    null
+            });
         }
     }
 );
@@ -2259,7 +3047,10 @@ app.get(
 
 app.get(
     "/status",
-    async (req, res) => {
+    async (
+        req,
+        res
+    ) => {
 
         try {
 
@@ -2267,7 +3058,7 @@ app.get(
                 await getFuturesBalance();
 
 
-            return res.json({
+            res.json({
 
                 online:
                     true,
@@ -2301,15 +3092,11 @@ app.get(
                     nextRun:
                         automaticTraderNextRun,
 
-                    selectedSymbols:
-                        Array.from(
-                            selectedAutoSymbols
-                        ),
+                    managedSymbols:
+                        managedList(),
 
-                    selectedSymbol:
-                        Array.from(
-                            selectedAutoSymbols
-                        )[0] || null
+                    managedCount:
+                        managedSymbols.size
                 },
 
                 api:
@@ -2332,17 +3119,31 @@ app.get(
                 },
 
                 orderBookFilter:
-                    getStatusConfig()
-                        .orderBook,
+                    getStatusConfig().orderBook,
+
+                multiDepth: {
+
+                    apiRequestDepth:
+                        WEEX_REQUEST_DEPTH,
+
+                    confirmationDepths:
+                        [...CONFIRMATION_DEPTHS],
+
+                    confirmationRequired:
+                        2,
+
+                    confirmationRule:
+                        "2_OF_3"
+                },
 
                 orderFlowStatistics:
                     getOrderBookStats(),
 
                 reversal:
-                    "CLOSE -> CONFIRM FLAT -> FRESH ORDER BOOK -> OPEN",
+                    "CLOSE -> CONFIRM FLAT -> FRESH 200-LEVEL SNAPSHOT -> 2 OF 3 -> OPEN",
 
                 automaticStrategy:
-                    "SELECTED COIN -> EVERY 1 HOUR -> ORDER BOOK -> LONG / SHORT",
+                    "LIVE WEEX POSITIONS -> 2 OF 3 ORDER BOOK -> HOLD / FLIP",
 
                 discoveredSymbols:
                     SUPPORTED_SYMBOLS.size,
@@ -2356,31 +3157,33 @@ app.get(
                     ).sort()
             });
 
-
         } catch (error) {
 
-            return res
-                .status(500)
-                .json({
+            res.status(
+                500
+            ).json({
 
-                    online:
-                        true,
+                online:
+                    true,
 
-                    error:
-                        error.message
-                });
+                error:
+                    error.message
+            });
         }
     }
 );
 
 
 // ============================================================
-// POSITION
+// INDIVIDUAL POSITION
 // ============================================================
 
 app.get(
     "/position",
-    async (req, res) => {
+    async (
+        req,
+        res
+    ) => {
 
         try {
 
@@ -2391,23 +3194,23 @@ app.get(
 
 
             if (
-                !SUPPORTED_SYMBOLS.has(
+                !isSupported(
                     symbol
                 )
             ) {
 
-                return res
-                    .status(400)
-                    .json({
+                return res.status(
+                    400
+                ).json({
 
-                        success:
-                            false,
+                    success:
+                        false,
 
-                        error:
-                            "Invalid or unavailable symbol",
+                    error:
+                        "Invalid or unavailable symbol",
 
-                        symbol
-                    });
+                    symbol
+                });
             }
 
 
@@ -2417,23 +3220,30 @@ app.get(
                 );
 
 
-            return res.json(
-                position
-            );
+            res.json({
 
+                ...position,
+
+                symbol,
+
+                managed:
+                    managedSymbols.has(
+                        symbol
+                    )
+            });
 
         } catch (error) {
 
-            return res
-                .status(500)
-                .json({
+            res.status(
+                500
+            ).json({
 
-                    success:
-                        false,
+                success:
+                    false,
 
-                    error:
-                        error.message
-                });
+                error:
+                    error.message
+            });
         }
     }
 );
@@ -2445,7 +3255,10 @@ app.get(
 
 app.get(
     "/",
-    (req, res) => {
+    (
+        req,
+        res
+    ) => {
 
         res.sendFile(
             path.join(
@@ -2485,7 +3298,7 @@ app.listen(
         );
 
         console.log(
-            "Automatic hourly trading:",
+            "Automatic trading:",
             AUTO_TRADING_ENABLED
                 ? "ENABLED"
                 : "DISABLED"
@@ -2494,11 +3307,6 @@ app.listen(
         console.log(
             "Automatic interval:",
             `${AUTO_TRADING_INTERVAL_MS / 60000} minutes`
-        );
-
-        console.log(
-            "Automatic mode:",
-            "SELECTED COIN ONLY"
         );
 
         console.log(
@@ -2531,18 +3339,28 @@ app.listen(
         );
 
         console.log(
-            "Order-book filter:",
-            "ENABLED"
+            "WEEX order-book request:",
+            `${WEEX_REQUEST_DEPTH} levels`
+        );
+
+        console.log(
+            "Trading depths:",
+            CONFIRMATION_DEPTHS.join(" + ")
+        );
+
+        console.log(
+            "Confirmation rule:",
+            "2 OF 3"
         );
 
         console.log(
             "LONG:",
-            "BID DOMINANCE"
+            "2 OF 3 DEPTHS PASS"
         );
 
         console.log(
             "SHORT:",
-            "ASK DOMINANCE"
+            "2 OF 3 DEPTHS PASS"
         );
 
         console.log(
@@ -2551,13 +3369,8 @@ app.listen(
         );
 
         console.log(
-            "Order-flow statistics:",
-            "ENABLED"
-        );
-
-        console.log(
             "Reversal:",
-            "CLOSE -> FLAT -> FRESH ORDER BOOK -> OPEN"
+            "CLOSE -> FLAT -> FRESH 200 -> 2 OF 3 -> OPEN"
         );
 
         console.log(
@@ -2578,8 +3391,13 @@ app.listen(
         console.log(
             "Automatic trader:",
             AUTO_TRADING_ENABLED
-                ? "EVERY 1 HOUR - SELECTED COIN ONLY"
+                ? "EVERY INTERVAL - LIVE WEEX POSITION DISCOVERY"
                 : "DISABLED"
+        );
+
+        console.log(
+            "Managed symbols at startup:",
+            managedSymbols.size
         );
 
         console.log(
@@ -2602,8 +3420,6 @@ app.listen(
                     await getFuturesBalance();
 
 
-                console.log("");
-
                 section(
                     "BOT READY"
                 );
@@ -2613,6 +3429,7 @@ app.listen(
                     "Available WEEX USDT-M symbols:",
                     SUPPORTED_SYMBOLS.size
                 );
+
 
                 console.log(
                     "Available balance:",
@@ -2635,8 +3452,37 @@ app.listen(
 
 
             // ------------------------------------------------
-            // START AUTOMATIC TRADER
+            // INITIAL LIVE POSITION DISCOVERY
             // ------------------------------------------------
+
+            if (
+                AUTO_TRADING_ENABLED &&
+                TRADING_ENABLED &&
+                API_KEY &&
+                API_SECRET &&
+                API_PASSPHRASE
+            ) {
+
+                console.log("");
+
+                console.log(
+                    "INITIAL LIVE POSITION DISCOVERY..."
+                );
+
+
+                try {
+
+                    await discoverLivePositions();
+
+                } catch (error) {
+
+                    console.error(
+                        "INITIAL POSITION DISCOVERY ERROR:",
+                        error.message
+                    );
+                }
+            }
+
 
             startAutomaticTrader();
 
@@ -2644,14 +3490,28 @@ app.listen(
             console.log("");
 
             console.log(
-                "READ-ONLY ORDER BOOK TEST:"
+                "READ-ONLY 2-OF-3 TEST:"
             );
 
             console.log(
                 "GET /test-orderbook?symbol=BTCUSDT&direction=LONG"
             );
 
-            console.log("");
+            console.log(
+                "Depths:",
+                CONFIRMATION_DEPTHS.join(" + ")
+            );
+
+            console.log(
+                "Rule:",
+                "2 OF 3"
+            );
+
+            console.log(
+                "WEEX request:",
+                WEEX_REQUEST_DEPTH
+            );
+
 
             console.log(
                 "ORDER FLOW STATISTICS:"
@@ -2661,7 +3521,15 @@ app.listen(
                 "GET /orderflow-stats"
             );
 
-            console.log("");
+
+            console.log(
+                "RESET ORDER FLOW STATISTICS:"
+            );
+
+            console.log(
+                "POST /orderflow-stats/reset"
+            );
+
 
             console.log(
                 "STATUS:"
@@ -2671,7 +3539,6 @@ app.listen(
                 "GET /status"
             );
 
-            console.log("");
 
             console.log(
                 "AUTOMATIC TRADER STATUS:"
@@ -2681,84 +3548,106 @@ app.listen(
                 "GET /automatic-trader/status"
             );
 
-            console.log("");
 
             console.log(
-                "AUTOMATIC TRADER SELECTION:"
+                "MANAGED SYMBOLS:"
+            );
+
+            console.log(
+                "GET /managed-symbols"
+            );
+
+
+            console.log(
+                "SELECT MANAGED SYMBOLS:"
             );
 
             console.log(
                 "POST /automatic-trader/select"
             );
 
-            console.log("");
 
             console.log(
-                "FORCE CHECK:"
+                "CLEAR MANAGED SYMBOLS:"
+            );
+
+            console.log(
+                "POST /automatic-trader/clear"
+            );
+
+
+            console.log(
+                "FORCE AUTOMATIC CHECK:"
             );
 
             console.log(
                 "POST /automatic-trader/run"
             );
 
-            console.log("");
 
             console.log(
-                "AUTOMATIC POSITIONS:"
+                "AUTOMATIC ORDER-FLOW MODULE:"
             );
 
             console.log(
-                "GET /automatic-trader/positions"
+                "POST /automatic-orderflow/run"
             );
 
-            console.log("");
 
             console.log(
-                "Manual LONG:"
+                "MANUAL LONG:"
             );
 
             console.log(
                 "POST /manual-long?symbol=BTCUSDT"
             );
 
-            console.log("");
 
             console.log(
-                "Manual SHORT:"
+                "MANUAL SHORT:"
             );
 
             console.log(
                 "POST /manual-short?symbol=BTCUSDT"
             );
 
-            console.log("");
 
             console.log(
-                "Manual CLOSE:"
+                "MANUAL CLOSE:"
             );
 
             console.log(
                 "POST /manual-close?symbol=BTCUSDT"
             );
 
-            console.log("");
 
             console.log(
-                "Risk:"
+                "LIVE 2-OF-3 ORDER BOOK:"
             );
 
             console.log(
-                `${DEFAULT_MARGIN} USDT margin / ` +
-                `${DEFAULT_LEVERAGE}x / ` +
-                `~${DEFAULT_MARGIN * DEFAULT_LEVERAGE} USDT notional`
+                "GET /live-orderbook?symbol=BTCUSDT"
             );
 
-            console.log("");
+
+            console.log(
+                "POSITION:"
+            );
+
+            console.log(
+                "GET /position?symbol=BTCUSDT"
+            );
+
+
+            console.log(
+                "Risk:",
+                `${DEFAULT_MARGIN} USDT margin / ${DEFAULT_LEVERAGE}x / ~${DEFAULT_MARGIN * DEFAULT_LEVERAGE} USDT notional`
+            );
+
 
             console.log(
                 "============================================================"
             );
-
 
         } catch (error) {
 
@@ -2775,6 +3664,7 @@ app.listen(
             console.error(
                 "============================================================"
             );
+
 
             console.error(
                 error.message
@@ -2794,3 +3684,4 @@ app.listen(
         }
     }
 );
+

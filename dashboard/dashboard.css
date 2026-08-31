@@ -1299,3 +1299,286 @@ max-width: 450px
         min-width: 100%;
     }
 }
+
+/* ============================================================
+   ORDER BOOK
+============================================================ */
+
+.live-orderbook{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:12px;
+}
+
+.orderbook-stat{
+    padding:16px;
+    border-radius:10px;
+    background:rgba(255,255,255,.03);
+    border:1px solid rgba(255,255,255,.08);
+}
+
+.orderbook-stat span{
+    display:block;
+    font-size:12px;
+    opacity:.65;
+    margin-bottom:6px;
+}
+
+.orderbook-stat strong{
+    font-size:20px;
+}
+
+.orderbook-direction{
+    margin-top:16px;
+    padding:18px;
+    border-radius:10px;
+    text-align:center;
+    font-size:22px;
+    font-weight:700;
+    background:rgba(255,255,255,.04);
+}
+
+.orderbook-direction.long{
+    border:1px solid rgba(0,200,100,.5);
+}
+
+.orderbook-direction.short{
+    border:1px solid rgba(255,70,70,.5);
+}
+
+.orderbook-direction.neutral{
+    border:1px solid rgba(255,180,0,.5);
+}
+
+
+/* ============================================================
+   MULTI DEPTH
+============================================================ */
+
+.multi-depth-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:12px;
+    margin-top:20px;
+}
+
+.depth-card{
+    padding:18px;
+    border-radius:12px;
+    background:rgba(255,255,255,.025);
+    border:1px solid rgba(255,255,255,.08);
+}
+
+.depth-card.pass{
+    border-color:rgba(0,200,100,.55);
+}
+
+.depth-card.fail{
+    border-color:rgba(255,70,70,.45);
+}
+
+.depth-card.no-data{
+    border-color:rgba(255,255,255,.08);
+    opacity:.75;
+}
+
+.depth-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:16px;
+}
+
+.depth-title{
+    font-size:17px;
+    font-weight:700;
+}
+
+.depth-badge{
+    padding:5px 9px;
+    border-radius:6px;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.3px;
+}
+
+.depth-badge.pass{
+    background:rgba(0,200,100,.12);
+    color:#35d98a;
+}
+
+.depth-badge.fail{
+    background:rgba(255,70,70,.12);
+    color:#ff6969;
+}
+
+.depth-badge.neutral{
+    background:rgba(255,255,255,.06);
+    opacity:.65;
+}
+
+.depth-metric{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    padding:7px 0;
+    border-bottom:1px solid rgba(255,255,255,.05);
+}
+
+.depth-metric:last-child{
+    border-bottom:0;
+}
+
+.depth-metric span{
+    font-size:12px;
+    opacity:.65;
+}
+
+.depth-metric strong{
+    font-size:13px;
+}
+
+.depth-test{
+    margin-top:14px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+}
+
+.test-box{
+    padding:9px;
+    border-radius:7px;
+    background:rgba(255,255,255,.035);
+    text-align:center;
+}
+
+.test-box span{
+    display:block;
+    font-size:10px;
+    opacity:.6;
+    margin-bottom:4px;
+}
+
+.test-box strong{
+    font-size:12px;
+}
+
+.test-pass{
+    color:#35d98a;
+}
+
+.test-fail{
+    color:#ff6969;
+}
+
+
+/* ============================================================
+   MULTI DEPTH RESULT
+============================================================ */
+
+.multi-confirmation{
+    margin-top:20px;
+    padding:20px;
+    border-radius:12px;
+    background:rgba(255,255,255,.025);
+    border:1px solid rgba(255,255,255,.08);
+    text-align:center;
+}
+
+.multi-confirmation.pass{
+    border-color:rgba(0,200,100,.6);
+}
+
+.multi-confirmation.fail{
+    border-color:rgba(255,70,70,.55);
+}
+
+.multi-confirmation-title{
+    font-size:13px;
+    opacity:.65;
+    margin-bottom:8px;
+}
+
+.multi-confirmation-result{
+    font-size:24px;
+    font-weight:800;
+}
+
+.multi-confirmation-result.pass{
+    color:#35d98a;
+}
+
+.multi-confirmation-result.fail{
+    color:#ff6969;
+}
+
+.multi-confirmation-detail{
+    margin-top:8px;
+    font-size:13px;
+    opacity:.65;
+}
+
+
+/* ============================================================
+   AUTOMATIC TRADER
+============================================================ */
+
+.auto-trader-controls{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+}
+
+.auto-trader-controls select{
+    min-width:180px;
+    padding:10px 12px;
+    border-radius:8px;
+    border:1px solid #333;
+    background:#111;
+    color:#fff;
+}
+
+.auto-status-grid{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:12px;
+}
+
+
+/* ============================================================
+   RESPONSIVE
+============================================================ */
+
+@media(max-width:1100px){
+
+    .multi-depth-grid{
+        grid-template-columns:repeat(2,minmax(0,1fr));
+    }
+
+}
+
+@media(max-width:900px){
+
+    .live-orderbook,
+    .auto-status-grid{
+        grid-template-columns:repeat(2,minmax(0,1fr));
+    }
+
+}
+
+@media(max-width:600px){
+
+    .live-orderbook,
+    .auto-status-grid,
+    .multi-depth-grid{
+        grid-template-columns:1fr;
+    }
+
+}
+
+
+.orderbook-time {
+    padding: 10px 6px;
+}

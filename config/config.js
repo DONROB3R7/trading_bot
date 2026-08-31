@@ -140,10 +140,7 @@ const AUTO_TRADING_ENABLED =
 //
 
 const AUTO_TRADING_INTERVAL_MS =
-    60 *
-    60 *
-    1000;
-
+  60 * 60 * 1000;
 
 // ============================================================
 // MAXIMUM TRADES PER CYCLE

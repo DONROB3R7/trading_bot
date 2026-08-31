@@ -10,7 +10,8 @@ const {
     MIN_ASK_BID_RATIO,
     AUTO_TRADING_ENABLED,
     AUTO_TRADING_MAX_TRADES_PER_CYCLE,
-    AUTO_TRADING_SYMBOL_DELAY_MS
+    AUTO_TRADING_SYMBOL_DELAY_MS,
+    MAX_OPEN_POSITIONS
 } = require("../config/config");
 
 const weex =
@@ -33,7 +34,8 @@ const {
     placeOpenOrder,
     closePosition,
     waitForPosition,
-    getOrderBook
+    getOrderBook,
+    SUPPORTED_SYMBOLS
 } = weex;
 
 
@@ -390,6 +392,72 @@ function releaseTradingLock(
 
 
 // ============================================================
+// CHECK MAX OPEN POSITIONS
+// ============================================================
+
+async function getOpenPositionCount() {
+
+    if (
+        !Number.isFinite(
+            Number(MAX_OPEN_POSITIONS)
+        )
+    ) {
+        return null;
+    }
+
+
+    if (
+        Number(MAX_OPEN_POSITIONS) <= 0
+    ) {
+        return null;
+    }
+
+
+    let count = 0;
+
+
+    const symbols =
+        Array.from(
+            SUPPORTED_SYMBOLS || []
+        );
+
+
+    for (
+        const symbol of symbols
+    ) {
+
+        try {
+
+            const position =
+                await getCurrentPosition(
+                    symbol
+                );
+
+
+            if (
+                position &&
+                position.direction &&
+                position.direction !== "FLAT"
+            ) {
+
+                count++;
+            }
+
+        } catch (error) {
+
+            console.error(
+                `POSITION COUNT ERROR ${symbol}:`,
+                error.message
+            );
+        }
+    }
+
+
+    return count;
+}
+
+
+// ============================================================
 // OPEN MARKET POSITION
 // ============================================================
 
@@ -422,12 +490,54 @@ async function openMarketPosition(
     // FRESH ORDER BOOK
     // --------------------------------------------------------
 
-    const orderBookCheck =
-        await checkOrderBook(
-            symbol,
-            direction,
-            getOrderBook
+    let orderBookCheck;
+
+
+    try {
+
+        orderBookCheck =
+            await checkOrderBook(
+                symbol,
+                direction,
+                getOrderBook
+            );
+
+    } catch (error) {
+
+        console.error("");
+
+        console.error(
+            "ORDER BOOK CHECK ERROR"
         );
+
+        console.error(
+            "Symbol:",
+            symbol
+        );
+
+        console.error(
+            "Direction:",
+            direction
+        );
+
+        console.error(
+            error.message
+        );
+
+
+        return {
+
+            success: false,
+
+            blocked: true,
+
+            reason:
+                "ORDER_BOOK_ERROR",
+
+            error:
+                error.message
+        };
+    }
 
 
     // --------------------------------------------------------
@@ -446,6 +556,7 @@ async function openMarketPosition(
     // --------------------------------------------------------
 
     if (
+        !orderBookCheck ||
         !orderBookCheck.allowed
     ) {
 
@@ -475,21 +586,27 @@ async function openMarketPosition(
 
         console.log(
             "Reason:",
+            orderBookCheck &&
             orderBookCheck.reason
+                ? orderBookCheck.reason
+                : "ORDER_BOOK_REJECTED"
         );
 
         console.log(
             "Imbalance:",
+            orderBookCheck &&
             orderBookCheck.imbalance
         );
 
         console.log(
             "Bid liquidity:",
+            orderBookCheck &&
             orderBookCheck.bidLiquidity
         );
 
         console.log(
             "Ask liquidity:",
+            orderBookCheck &&
             orderBookCheck.askLiquidity
         );
 
@@ -505,7 +622,10 @@ async function openMarketPosition(
             blocked: true,
 
             reason:
-                orderBookCheck.reason,
+                orderBookCheck &&
+                orderBookCheck.reason
+                    ? orderBookCheck.reason
+                    : "ORDER_BOOK_REJECTED",
 
             orderBook:
                 orderBookCheck
@@ -537,8 +657,21 @@ async function openMarketPosition(
 
 
     if (
-        balance.available <
-        DEFAULT_MARGIN
+        !balance ||
+        !Number.isFinite(
+            Number(balance.available)
+        )
+    ) {
+
+        throw new Error(
+            `${symbol}: invalid futures balance response.`
+        );
+    }
+
+
+    if (
+        Number(balance.available) <
+        Number(DEFAULT_MARGIN)
     ) {
 
         throw new Error(
@@ -559,6 +692,19 @@ async function openMarketPosition(
         );
 
 
+    if (
+        !Number.isFinite(
+            Number(price)
+        ) ||
+        Number(price) <= 0
+    ) {
+
+        throw new Error(
+            `${symbol}: invalid market price: ${price}`
+        );
+    }
+
+
     // --------------------------------------------------------
     // POSITION CALCULATION
     // --------------------------------------------------------
@@ -568,6 +714,18 @@ async function openMarketPosition(
             symbol,
             price
         );
+
+
+    if (
+        !calculation ||
+        !calculation.quantity ||
+        Number(calculation.quantity) <= 0
+    ) {
+
+        throw new Error(
+            `${symbol}: invalid position calculation.`
+        );
+    }
 
 
     printPosition(
@@ -1216,11 +1374,13 @@ async function processSignal(
     }
 }
 
+
 // ============================================================
 // AUTOMATIC ORDER-FLOW TRADER
 // ============================================================
 //
 // Every automatic cycle:
+//
 // 1. Scan every discovered WEEX symbol.
 // 2. Read fresh order book.
 // 3. Determine LONG / SHORT / NEUTRAL.
@@ -1235,6 +1395,8 @@ async function processSignal(
 // processSignal() performs another FRESH order-book check
 // immediately before the actual entry.
 //
+// CLOSE is NEVER blocked by order flow.
+//
 // ============================================================
 
 let automaticTradingRunning = false;
@@ -1245,7 +1407,7 @@ let automaticTradingLastResult = null;
 
 
 // ============================================================
-// SLEEP
+// AUTOMATIC SLEEP
 // ============================================================
 
 function automaticSleep(ms) {
@@ -1263,98 +1425,137 @@ function automaticSleep(ms) {
 // ============================================================
 // GET AUTOMATIC ORDER-FLOW DECISION
 // ============================================================
+//
+// IMPORTANT:
+//
+// Automatic trading MUST use the same multi-depth confirmation
+// rule as the real entry:
+//
+//     15 + 30 + 60
+//
+//     REQUIRED = 2 OF 3
+//
+// We evaluate LONG and SHORT separately.
+//
+// LONG:
+//     2/3 LONG depths must pass
+//
+// SHORT:
+//     2/3 SHORT depths must pass
+//
+// If neither direction is confirmed:
+//
+//     NEUTRAL
+//
+// The actual entry is still checked AGAIN by processSignal()
+// using another fresh order-book snapshot.
+//
+// ============================================================
 
-async function getAutomaticOrderFlowDecision(
-    symbol
-) {
+async function getAutomaticOrderFlowDecision(symbol) {
 
-    const result =
-        await checkOrderBook(
-            symbol,
-            "LONG",
-            getOrderBook
-        );
+    symbol =
+        normalizeSymbol(symbol);
 
-    const imbalance =
-        Number(
-            result.imbalance
-        );
+    try {
 
+        const result =
+            await checkOrderBook(
+                symbol
+            );
 
-    if (
-        !Number.isFinite(
-            imbalance
-        )
-    ) {
+        return {
+
+            direction:
+                result.direction || "NEUTRAL",
+
+            confirmationPassed:
+                result.confirmationPassed === true,
+
+            passedDepths:
+                result.passedDepths ?? 0,
+
+            requiredPassedDepths:
+                result.requiredPassedDepths ?? 2,
+
+            confirmationDepths:
+                result.confirmationDepths ?? [15, 30, 60],
+
+            imbalance:
+                Number(
+                    result.analysis?.snapshot
+                        ? calculateDisplayImbalance(result)
+                        : NaN
+                ),
+
+            reason:
+                result.reason ||
+                "MULTI_DEPTH_CONFIRMATION_FAILED",
+
+            orderBook:
+                result,
+
+            long:
+                result.long,
+
+            short:
+                result.short
+        };
+
+    } catch (error) {
 
         return {
 
             direction:
                 "NEUTRAL",
 
-            imbalance,
+            confirmationPassed:
+                false,
+
+            passedDepths:
+                0,
+
+            requiredPassedDepths:
+                2,
+
+            confirmationDepths:
+                [15, 30, 60],
+
+            imbalance:
+                NaN,
 
             reason:
-                "INVALID_IMBALANCE"
+                "ORDER_BOOK_ERROR",
+
+            error:
+                error.message
         };
     }
+}
 
+
+// ============================================================
+// CHECK WHETHER PROCESS RESULT WAS A REAL TRADE
+// ============================================================
+
+function wasActualTrade(
+    processResult
+) {
 
     if (
-        imbalance >=
-        LONG_MIN_IMBALANCE
+        !processResult ||
+        !processResult.success
     ) {
-
-        return {
-
-            direction:
-                "LONG",
-
-            imbalance,
-
-            reason:
-                "ORDER_BOOK_SUPPORTS_LONG",
-
-            orderBook:
-                result
-        };
+        return false;
     }
 
 
-    if (
-        imbalance <=
-        SHORT_MAX_IMBALANCE
-    ) {
-
-        return {
-
-            direction:
-                "SHORT",
-
-            imbalance,
-
-            reason:
-                "ORDER_BOOK_SUPPORTS_SHORT",
-
-            orderBook:
-                result
-        };
-    }
-
-
-    return {
-
-        direction:
-            "NEUTRAL",
-
-        imbalance,
-
-        reason:
-            "ORDER_BOOK_NEUTRAL",
-
-        orderBook:
-            result
-    };
+    return (
+        processResult.action === "OPENED_LONG" ||
+        processResult.action === "OPENED_SHORT" ||
+        processResult.action === "REVERSED_TO_LONG" ||
+        processResult.action === "REVERSED_TO_SHORT"
+    );
 }
 
 
@@ -1455,6 +1656,12 @@ async function runAutomaticTradingCycle() {
 
     try {
 
+        const symbols =
+            Array.from(
+                SUPPORTED_SYMBOLS || []
+            ).sort();
+
+
         console.log("");
 
         console.log(
@@ -1476,7 +1683,7 @@ async function runAutomaticTradingCycle() {
 
         console.log(
             "Symbols:",
-            SUPPORTED_SYMBOLS.size
+            symbols.length
         );
 
         console.log(
@@ -1495,14 +1702,15 @@ async function runAutomaticTradingCycle() {
         );
 
         console.log(
-            "############################################################"
+            "Maximum open positions:",
+            Number(MAX_OPEN_POSITIONS) > 0
+                ? MAX_OPEN_POSITIONS
+                : "DISABLED"
         );
 
-
-        const symbols =
-            Array.from(
-                SUPPORTED_SYMBOLS
-            ).sort();
+        console.log(
+            "############################################################"
+        );
 
 
         for (
@@ -1515,7 +1723,7 @@ async function runAutomaticTradingCycle() {
 
             if (
                 tradesThisCycle >=
-                AUTO_TRADING_MAX_TRADES_PER_CYCLE
+                Number(AUTO_TRADING_MAX_TRADES_PER_CYCLE)
             ) {
 
                 console.log("");
@@ -1526,7 +1734,7 @@ async function runAutomaticTradingCycle() {
 
                 console.log(
                     tradesThisCycle,
-                    "trades"
+                    "real trades"
                 );
 
                 console.log(
@@ -1572,7 +1780,10 @@ async function runAutomaticTradingCycle() {
 
                 console.log(
                     "Position:",
+                    current &&
                     current.direction
+                        ? current.direction
+                        : "UNKNOWN"
                 );
 
                 console.log(
@@ -1584,6 +1795,57 @@ async function runAutomaticTradingCycle() {
                     "Order-flow decision:",
                     decision.direction
                 );
+
+                console.log(
+                    "Reason:",
+                    decision.reason
+                );
+
+
+                // ------------------------------------------------
+                // ORDER BOOK ERROR
+                // ------------------------------------------------
+
+                if (
+                    decision.reason ===
+                    "ORDER_BOOK_ERROR"
+                ) {
+
+                    console.log(
+                        "Action:",
+                        "SKIP"
+                    );
+
+                    results.push({
+
+                        symbol,
+
+                        position:
+                            current.direction,
+
+                        decision:
+                            "ERROR",
+
+                        imbalance:
+                            decision.imbalance,
+
+                        action:
+                            "SKIP",
+
+                        reason:
+                            decision.reason,
+
+                        error:
+                            decision.error
+                    });
+
+
+                    await automaticSleep(
+                        AUTO_TRADING_SYMBOL_DELAY_MS
+                    );
+
+                    continue;
+                }
 
 
                 // ------------------------------------------------
@@ -1619,6 +1881,7 @@ async function runAutomaticTradingCycle() {
                         reason:
                             decision.reason
                     });
+
 
                     await automaticSleep(
                         AUTO_TRADING_SYMBOL_DELAY_MS
@@ -1662,6 +1925,7 @@ async function runAutomaticTradingCycle() {
                             `ALREADY_${decision.direction}`
                     });
 
+
                     await automaticSleep(
                         AUTO_TRADING_SYMBOL_DELAY_MS
                     );
@@ -1671,16 +1935,96 @@ async function runAutomaticTradingCycle() {
 
 
                 // ------------------------------------------------
+                // MAX OPEN POSITIONS
+                // ------------------------------------------------
+
+                if (
+                    current.direction ===
+                    "FLAT" &&
+                    Number(MAX_OPEN_POSITIONS) > 0
+                ) {
+
+                    const openPositionCount =
+                        await getOpenPositionCount();
+
+
+                    if (
+                        openPositionCount !== null &&
+                        openPositionCount >=
+                        Number(MAX_OPEN_POSITIONS)
+                    ) {
+
+                        console.log(
+                            "Action:",
+                            "SKIP_MAX_OPEN_POSITIONS"
+                        );
+
+                        console.log(
+                            "Open positions:",
+                            openPositionCount
+                        );
+
+                        console.log(
+                            "Maximum:",
+                            MAX_OPEN_POSITIONS
+                        );
+
+
+                        results.push({
+
+                            symbol,
+
+                            position:
+                                current.direction,
+
+                            decision:
+                                decision.direction,
+
+                            imbalance:
+                                decision.imbalance,
+
+                            action:
+                                "NO_ACTION",
+
+                            reason:
+                                "MAX_OPEN_POSITIONS_REACHED",
+
+                            openPositions:
+                                openPositionCount,
+
+                            maxOpenPositions:
+                                Number(MAX_OPEN_POSITIONS)
+                        });
+
+
+                        await automaticSleep(
+                            AUTO_TRADING_SYMBOL_DELAY_MS
+                        );
+
+                        continue;
+                    }
+                }
+
+
+                // ------------------------------------------------
                 // TRADE REQUIRED
                 // ------------------------------------------------
 
-                console.log(
-                    "Action:",
+                const plannedAction =
                     current.direction === "FLAT"
                         ? `OPEN_${decision.direction}`
-                        : `REVERSE_${current.direction}_TO_${decision.direction}`
+                        : `REVERSE_${current.direction}_TO_${decision.direction}`;
+
+
+                console.log(
+                    "Action:",
+                    plannedAction
                 );
 
+
+                // ------------------------------------------------
+                // EXECUTE
+                // ------------------------------------------------
 
                 const processResult =
                     await processSignal(
@@ -1689,7 +2033,33 @@ async function runAutomaticTradingCycle() {
                     );
 
 
-                tradesThisCycle++;
+                // ------------------------------------------------
+                // COUNT ONLY REAL TRADES
+                // ------------------------------------------------
+
+                const actualTrade =
+                    wasActualTrade(
+                        processResult
+                    );
+
+
+                if (
+                    actualTrade
+                ) {
+
+                    tradesThisCycle++;
+
+                    console.log(
+                        "REAL TRADE EXECUTED:",
+                        tradesThisCycle
+                    );
+
+                } else {
+
+                    console.log(
+                        "NO REAL TRADE EXECUTED."
+                    );
+                }
 
 
                 results.push({
@@ -1706,9 +2076,10 @@ async function runAutomaticTradingCycle() {
                         decision.imbalance,
 
                     action:
-                        current.direction === "FLAT"
-                            ? `OPEN_${decision.direction}`
-                            : `REVERSE_${current.direction}_TO_${decision.direction}`,
+                        plannedAction,
+
+                    executed:
+                        actualTrade,
 
                     result:
                         processResult
@@ -1720,8 +2091,10 @@ async function runAutomaticTradingCycle() {
                 );
 
                 console.log(
-                    pretty(
-                        processResult
+                    JSON.stringify(
+                        processResult,
+                        null,
+                        2
                     )
                 );
 
@@ -1788,7 +2161,9 @@ async function runAutomaticTradingCycle() {
                 tradesThisCycle,
 
             maxTrades:
-                AUTO_TRADING_MAX_TRADES_PER_CYCLE,
+                Number(
+                    AUTO_TRADING_MAX_TRADES_PER_CYCLE
+                ),
 
             results
         };
@@ -1818,7 +2193,7 @@ async function runAutomaticTradingCycle() {
         );
 
         console.log(
-            "Trades:",
+            "Real trades:",
             tradesThisCycle
         );
 
@@ -1864,10 +2239,21 @@ function getAutomaticTradingStatus() {
             automaticTradingLastRun,
 
         maxTradesPerCycle:
-            AUTO_TRADING_MAX_TRADES_PER_CYCLE,
+            Number(
+                AUTO_TRADING_MAX_TRADES_PER_CYCLE
+            ),
+
+        maxOpenPositions:
+            Number(
+                MAX_OPEN_POSITIONS
+            ) > 0
+                ? Number(MAX_OPEN_POSITIONS)
+                : null,
 
         symbolDelayMs:
-            AUTO_TRADING_SYMBOL_DELAY_MS,
+            Number(
+                AUTO_TRADING_SYMBOL_DELAY_MS
+            ),
 
         lastResult:
             automaticTradingLastResult
@@ -1890,8 +2276,8 @@ function getStatusConfig() {
             DEFAULT_LEVERAGE,
 
         targetNotional:
-            DEFAULT_MARGIN *
-            DEFAULT_LEVERAGE,
+            Number(DEFAULT_MARGIN) *
+            Number(DEFAULT_LEVERAGE),
 
         marginMode:
             REQUIRED_MARGIN_MODE,
@@ -1956,4 +2342,3 @@ module.exports = {
 
     resetOrderBookStats
 };
-

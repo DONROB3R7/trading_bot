@@ -9,7 +9,6 @@ const {
     DEFAULT_LEVERAGE,
     REQUIRED_MARGIN_MODE,
 
-    // TP / SL FROM CONFIG
     TP_SL_ENABLED,
     TAKE_PROFIT_PERCENT,
     STOP_LOSS_PERCENT,
@@ -47,7 +46,7 @@ function safeNumber(value, fallback = 0) {
 // SAFE INTEGER
 // ============================================================
 
-function safeInteger(value, fallback) {
+function safeInteger(value, fallback = 0) {
     const number = Number(value);
 
     if (
@@ -78,7 +77,6 @@ function normalizeSymbol(symbol) {
         value = value.split(":").pop();
     }
 
-    value = value.replace(/\//g, "");
     value = value.replace(/\.P$/i, "");
     value = value.replace(/:PERP$/i, "");
     value = value.replace(/\s+/g, "");
@@ -94,18 +92,14 @@ function decimalPlaces(value) {
     const stringValue = String(value);
 
     if (stringValue.includes("e-")) {
-        return Number(
-            stringValue.split("e-")[1]
-        );
+        return Number(stringValue.split("e-")[1]);
     }
 
     if (stringValue.includes(".")) {
-        return (
-            stringValue
-                .split(".")[1]
-                .replace(/0+$/, "")
-                .length
-        );
+        return stringValue
+            .split(".")[1]
+            .replace(/0+$/, "")
+            .length;
     }
 
     return 0;
@@ -136,10 +130,7 @@ function floorToStep(value, stepSize) {
         12
     );
 
-    const multiplier = Math.pow(
-        10,
-        precision
-    );
+    const multiplier = Math.pow(10, precision);
 
     const valueInt = Math.floor(
         value * multiplier + 1e-8
@@ -260,12 +251,18 @@ async function weexRequest(
     ) {
         queryString =
             new URLSearchParams(
-                Object.entries(params).map(
-                    ([key, value]) => [
-                        key,
-                        String(value)
-                    ]
-                )
+                Object.entries(params)
+                    .filter(
+                        ([, value]) =>
+                            value !== undefined &&
+                            value !== null
+                    )
+                    .map(
+                        ([key, value]) => [
+                            key,
+                            String(value)
+                        ]
+                    )
             ).toString();
     }
 
@@ -274,9 +271,33 @@ async function weexRequest(
     // --------------------------------------------------------
 
     if (upperMethod === "POST") {
-        body = JSON.stringify(
-            params || {}
-        );
+        body = JSON.stringify(params || {});
+    }
+
+    // --------------------------------------------------------
+    // DELETE QUERY
+    // --------------------------------------------------------
+
+    if (
+        upperMethod === "DELETE" &&
+        params &&
+        Object.keys(params).length > 0
+    ) {
+        queryString =
+            new URLSearchParams(
+                Object.entries(params)
+                    .filter(
+                        ([, value]) =>
+                            value !== undefined &&
+                            value !== null
+                    )
+                    .map(
+                        ([key, value]) => [
+                            key,
+                            String(value)
+                        ]
+                    )
+            ).toString();
     }
 
     // --------------------------------------------------------
@@ -352,11 +373,8 @@ async function weexRequest(
         await fetch(
             url,
             {
-                method:
-                    upperMethod,
-
+                method: upperMethod,
                 headers,
-
                 body:
                     upperMethod === "POST"
                         ? body
@@ -514,12 +532,25 @@ function normalizeContract(contract) {
             ),
 
         quantityPrecision,
+
         pricePrecision,
+
+        baseAssetPrecision:
+            safeInteger(
+                contract?.baseAssetPrecision,
+                quantityPrecision
+            ),
+
         stepSize,
+
         minOrderSize,
+
         maxOrderSize,
+
         maxPositionSize,
+
         marketOpenLimitSize,
+
         maxLeverage
     };
 }
@@ -576,6 +607,10 @@ async function loadAllContracts() {
         );
     }
 
+    // --------------------------------------------------------
+    // API TRADING SYMBOLS
+    // --------------------------------------------------------
+
     let apiTradingSet = null;
 
     try {
@@ -597,12 +632,22 @@ async function loadAllContracts() {
         if (apiSymbols.length > 0) {
             apiTradingSet =
                 new Set(
-                    apiSymbols.map(
-                        symbol =>
-                            normalizeSymbol(
-                                symbol
-                            )
-                    )
+                    apiSymbols
+                        .map(item => {
+                            if (
+                                typeof item ===
+                                "string"
+                            ) {
+                                return normalizeSymbol(
+                                    item
+                                );
+                            }
+
+                            return normalizeSymbol(
+                                item?.symbol
+                            );
+                        })
+                        .filter(Boolean)
                 );
         }
     } catch (error) {
@@ -618,7 +663,19 @@ async function loadAllContracts() {
         );
     }
 
+    // --------------------------------------------------------
+    // RESET CACHE
+    // --------------------------------------------------------
+
     SUPPORTED_SYMBOLS.clear();
+
+    for (const key of Object.keys(CONTRACT_INFO)) {
+        delete CONTRACT_INFO[key];
+    }
+
+    // --------------------------------------------------------
+    // BUILD CONTRACT CACHE
+    // --------------------------------------------------------
 
     for (const contract of contracts) {
         const symbol =
@@ -633,21 +690,31 @@ async function loadAllContracts() {
         const quoteAsset =
             String(
                 contract?.quoteAsset || ""
-            )
-                .toUpperCase();
+            ).toUpperCase();
 
         const marginAsset =
             String(
                 contract?.marginAsset || ""
-            )
-                .toUpperCase();
+            ).toUpperCase();
+
+        const forwardContractFlag =
+            contract?.forwardContractFlag;
+
+        // ----------------------------------------------------
+        // USDT-M FILTER
+        // ----------------------------------------------------
 
         if (
             quoteAsset !== "USDT" &&
-            marginAsset !== "USDT"
+            marginAsset !== "USDT" &&
+            forwardContractFlag !== true
         ) {
             continue;
         }
+
+        // ----------------------------------------------------
+        // API TRADING FILTER
+        // ----------------------------------------------------
 
         if (
             apiTradingSet &&
@@ -656,10 +723,13 @@ async function loadAllContracts() {
             continue;
         }
 
-        CONTRACT_INFO[symbol] =
+        const normalized =
             normalizeContract(
                 contract
             );
+
+        CONTRACT_INFO[symbol] =
+            normalized;
 
         SUPPORTED_SYMBOLS.add(
             symbol
@@ -857,8 +927,7 @@ async function getFuturesBalance() {
             item =>
                 String(
                     item?.asset || ""
-                )
-                    .toUpperCase() ===
+                ).toUpperCase() ===
                 "USDT"
         );
 
@@ -900,6 +969,105 @@ async function getFuturesBalance() {
     return {
         balance,
         available
+    };
+}
+
+// ============================================================
+// NORMALIZE POSITION
+// ============================================================
+
+function normalizePosition(position) {
+    const symbol =
+        normalizeSymbol(
+            position?.symbol
+        );
+
+    const side =
+        String(
+            position?.side || ""
+        )
+            .trim()
+            .toUpperCase();
+
+    const quantity =
+        safeNumber(
+            position?.size,
+            0
+        );
+
+    const openValue =
+        safeNumber(
+            position?.openValue,
+            0
+        );
+
+    return {
+        id:
+            position?.id ||
+            null,
+
+        symbol,
+
+        direction:
+            side,
+
+        quantity,
+
+        available:
+            quantity,
+
+        avgPrice:
+            quantity > 0
+                ? openValue / quantity
+                : 0,
+
+        positionValue:
+            openValue,
+
+        leverage:
+            safeNumber(
+                position?.leverage,
+                0
+            ),
+
+        margin:
+            safeNumber(
+                position?.marginSize,
+                0
+            ),
+
+        unrealizedPnL:
+            safeNumber(
+                position?.unrealizePnl,
+                0
+            ),
+
+        liquidationPrice:
+            safeNumber(
+                position?.liquidatePrice,
+                0
+            ),
+
+        marginType:
+            position?.marginType ||
+            "",
+
+        separatedMode:
+            position?.separatedMode ||
+            position?.separatedType ||
+            "",
+
+        createdTime:
+            safeNumber(
+                position?.createdTime,
+                0
+            ),
+
+        updatedTime:
+            safeNumber(
+                position?.updatedTime,
+                0
+            )
     };
 }
 
@@ -958,84 +1126,19 @@ async function getCurrentPosition(symbol) {
         );
     }
 
-    const position =
-        validPositions[0];
-
-    const side =
-        String(
-            position?.side || ""
-        )
-            .trim()
-            .toUpperCase();
+    const result =
+        normalizePosition(
+            validPositions[0]
+        );
 
     if (
-        side !== "LONG" &&
-        side !== "SHORT"
+        result.direction !== "LONG" &&
+        result.direction !== "SHORT"
     ) {
         throw new Error(
-            `${symbol}: unknown position side ${side}`
+            `${symbol}: unknown position side ${result.direction}`
         );
     }
-
-    const quantity =
-        Number(
-            position.size ?? 0
-        );
-
-    const openValue =
-        Number(
-            position.openValue ?? 0
-        );
-
-    const result = {
-        symbol,
-
-        direction:
-            side,
-
-        quantity,
-
-        available:
-            quantity,
-
-        avgPrice:
-            quantity > 0
-                ? openValue / quantity
-                : 0,
-
-        positionValue:
-            openValue,
-
-        leverage:
-            safeNumber(
-                position.leverage,
-                0
-            ),
-
-        margin:
-            safeNumber(
-                position.marginSize,
-                0
-            ),
-
-        unrealizedPnL:
-            safeNumber(
-                position.unrealizePnl,
-                0
-            ),
-
-        liquidationPrice:
-            safeNumber(
-                position.liquidatePrice,
-                0
-            ),
-
-        marginType:
-            position.marginType || "",
-
-        separatedMode:
-            position.separatedMode || ""
-    };
 
     console.log("");
     console.log(
@@ -1087,7 +1190,97 @@ async function getCurrentPosition(symbol) {
         result.marginType
     );
 
+    console.log(
+        "Separated mode:",
+        result.separatedMode
+    );
+
     return result;
+}
+
+// ============================================================
+// GET ALL OPEN POSITIONS
+// ============================================================
+
+async function getAllOpenPositions() {
+    const data =
+        await weexRequest(
+            "GET",
+            "/capi/v3/account/position/allPosition"
+        );
+
+    const positions =
+        Array.isArray(data)
+            ? data
+            : Array.isArray(data?.data)
+                ? data.data
+                : [];
+
+    const openPositions = [];
+
+    for (
+        const position
+        of positions
+    ) {
+        const normalized =
+            normalizePosition(
+                position
+            );
+
+        if (
+            !normalized.symbol ||
+            normalized.quantity <= 0 ||
+            (
+                normalized.direction !== "LONG" &&
+                normalized.direction !== "SHORT"
+            )
+        ) {
+            continue;
+        }
+
+        openPositions.push(
+            normalized
+        );
+    }
+
+    console.log("");
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "WEEX CURRENT OPEN POSITIONS"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    if (
+        openPositions.length === 0
+    ) {
+        console.log(
+            "No open positions."
+        );
+    } else {
+        for (
+            const position
+            of openPositions
+        ) {
+            console.log(
+                `${position.symbol} → ${position.direction} | ` +
+                `Qty=${position.quantity} | ` +
+                `Avg=${position.avgPrice} | ` +
+                `PnL=${position.unrealizedPnL}`
+            );
+        }
+    }
+
+    console.log(
+        "============================================================"
+    );
+
+    return openPositions;
 }
 
 // ============================================================
@@ -1145,7 +1338,10 @@ function normalizeMarginMode(config) {
         config?.marginModeType
     ];
 
-    for (const value of values) {
+    for (
+        const value
+        of values
+    ) {
         if (
             value === undefined ||
             value === null
@@ -1256,7 +1452,7 @@ async function ensureLeverage(symbol) {
 
     console.log("");
     console.log(
-        `${symbol}: ISOLATED leverage currently ` +
+        `${symbol}: leverage currently ` +
         `LONG=${current.isolatedLong}x ` +
         `SHORT=${current.isolatedShort}x`
     );
@@ -1337,7 +1533,7 @@ function formatQuantity(
 
     const adjusted =
         floorToStep(
-            quantity,
+            Number(quantity),
             contract.stepSize
         );
 
@@ -1389,7 +1585,7 @@ function formatPrice(
     }
 
     return Number(
-        price.toFixed(
+        Number(price).toFixed(
             contract.pricePrecision
         )
     );
@@ -1463,6 +1659,21 @@ function calculatePosition(
         throw new Error(
             `${symbol}: quantity ${quantity} ` +
             `exceeds WEEX maximum ${contract.maxOrderSize}`
+        );
+    }
+
+    if (
+        Number.isFinite(
+            contract.maxPositionSize
+        ) &&
+        contract.maxPositionSize > 0 &&
+        quantity >
+        contract.maxPositionSize
+    ) {
+        throw new Error(
+            `${symbol}: quantity ${quantity} ` +
+            `exceeds WEEX maximum position size ` +
+            `${contract.maxPositionSize}`
         );
     }
 
@@ -1593,33 +1804,53 @@ function printPosition(
 // ============================================================
 
 function extractStepSizeFromError(error) {
+    const candidates = [
+        error?.data?.errorMessage,
+        error?.data?.msg,
+        error?.data?.message,
+        typeof error?.data === "string"
+            ? error.data
+            : "",
+        error?.message
+    ];
+
     const text =
-        JSON.stringify(
-            error?.data || ""
-        );
+        candidates
+            .filter(Boolean)
+            .join(" ");
 
-    const match =
-        text.match(
-            /stepSize\s*['"]?\s*([0-9]+(?:\.[0-9]+)?)['"]?/i
-        );
+    const patterns = [
+        /stepSize\s*[:=]\s*["']?([0-9]+(?:\.[0-9]+)?)/i,
+        /step\s*size\s*[:=]\s*["']?([0-9]+(?:\.[0-9]+)?)/i,
+        /stepSize[^0-9]*([0-9]+(?:\.[0-9]+)?)/i,
+        /must\s+be\s+multiple\s+of\s+([0-9]+(?:\.[0-9]+)?)/i
+    ];
 
-    if (!match) {
-        return null;
-    }
-
-    const step =
-        Number(
-            match[1]
-        );
-
-    if (
-        !Number.isFinite(step) ||
-        step <= 0
+    for (
+        const pattern
+        of patterns
     ) {
-        return null;
+        const match =
+            text.match(pattern);
+
+        if (!match) {
+            continue;
+        }
+
+        const step =
+            Number(
+                match[1]
+            );
+
+        if (
+            Number.isFinite(step) &&
+            step > 0
+        ) {
+            return step;
+        }
     }
 
-    return step;
+    return null;
 }
 
 // ============================================================
@@ -1673,6 +1904,15 @@ function buildOpenOrder(
     takeProfitPrice = null,
     stopLossPrice = null
 ) {
+    if (
+        direction !== "LONG" &&
+        direction !== "SHORT"
+    ) {
+        throw new Error(
+            `${symbol}: invalid open direction ${direction}`
+        );
+    }
+
     const order = {
         symbol,
 
@@ -1699,8 +1939,8 @@ function buildOpenOrder(
 
     if (
         TP_SL_ENABLED &&
-        takeProfitPrice &&
-        stopLossPrice
+        takeProfitPrice !== null &&
+        stopLossPrice !== null
     ) {
         order.tpTriggerPrice =
             String(
@@ -1731,11 +1971,21 @@ async function placeOpenOrder(
     direction,
     calculation
 ) {
-    const clientOrderId =
-        `TV_${symbol}_${direction}_${Date.now()}`.slice(
-            0,
-            36
+    if (
+        direction !== "LONG" &&
+        direction !== "SHORT"
+    ) {
+        throw new Error(
+            `${symbol}: invalid direction ${direction}`
         );
+    }
+
+    const clientOrderId =
+        `TV_${symbol}_${direction}_${Date.now()}`
+            .slice(
+                0,
+                36
+            );
 
     let quantity =
         formatQuantity(
@@ -1744,7 +1994,7 @@ async function placeOpenOrder(
         );
 
     // --------------------------------------------------------
-    // GET CURRENT PRICE
+    // ENTRY REFERENCE PRICE
     // --------------------------------------------------------
 
     const entryReferencePrice =
@@ -1753,52 +2003,28 @@ async function placeOpenOrder(
         );
 
     // --------------------------------------------------------
-    // ALWAYS USE 2% TP + 2% SL
+    // TP / SL FROM CONFIG
     // --------------------------------------------------------
 
-    const tpPercent = 2;
-    const slPercent = 2;
+    let takeProfitPrice = null;
+    let stopLossPrice = null;
 
-    let takeProfitPrice;
-    let stopLossPrice;
+    if (TP_SL_ENABLED) {
+        const calculated =
+            calculateTpSl(
+                symbol,
+                direction,
+                entryReferencePrice,
+                TAKE_PROFIT_PERCENT,
+                STOP_LOSS_PERCENT
+            );
 
-    if (
-        direction === "LONG"
-    ) {
         takeProfitPrice =
-            entryReferencePrice *
-            (1 + tpPercent / 100);
+            calculated.takeProfitPrice;
 
         stopLossPrice =
-            entryReferencePrice *
-            (1 - slPercent / 100);
-    } else if (
-        direction === "SHORT"
-    ) {
-        takeProfitPrice =
-            entryReferencePrice *
-            (1 - tpPercent / 100);
-
-        stopLossPrice =
-            entryReferencePrice *
-            (1 + slPercent / 100);
-    } else {
-        throw new Error(
-            `${symbol}: invalid direction ${direction}`
-        );
+            calculated.stopLossPrice;
     }
-
-    takeProfitPrice =
-        formatPrice(
-            symbol,
-            takeProfitPrice
-        );
-
-    stopLossPrice =
-        formatPrice(
-            symbol,
-            stopLossPrice
-        );
 
     // --------------------------------------------------------
     // BUILD MARKET ORDER
@@ -1820,7 +2046,9 @@ async function placeOpenOrder(
     );
 
     console.log(
-        "OPEN ORDER + NATIVE 2% TP / 2% SL"
+        TP_SL_ENABLED
+            ? "OPEN ORDER + NATIVE TP / SL"
+            : "OPEN MARKET ORDER"
     );
 
     console.log(
@@ -1849,14 +2077,16 @@ async function placeOpenOrder(
 
     console.log(
         "TP:",
-        takeProfitPrice,
-        "(2%)"
+        TP_SL_ENABLED
+            ? `${takeProfitPrice} (+${TAKE_PROFIT_PERCENT}%)`
+            : "DISABLED"
     );
 
     console.log(
         "SL:",
-        stopLossPrice,
-        "(2%)"
+        TP_SL_ENABLED
+            ? `${stopLossPrice} (-${STOP_LOSS_PERCENT}%)`
+            : "DISABLED"
     );
 
     console.log(
@@ -1892,7 +2122,7 @@ async function placeOpenOrder(
         ensureOrderAccepted(
             symbol,
             result,
-            "OPEN ORDER + TP/SL"
+            "OPEN ORDER"
         );
 
         console.log("");
@@ -1900,13 +2130,15 @@ async function placeOpenOrder(
             `${symbol}: MARKET ORDER ACCEPTED`
         );
 
-        console.log(
-            `${symbol}: TP ${takeProfitPrice}`
-        );
+        if (TP_SL_ENABLED) {
+            console.log(
+                `${symbol}: TP ${takeProfitPrice}`
+            );
 
-        console.log(
-            `${symbol}: SL ${stopLossPrice}`
-        );
+            console.log(
+                `${symbol}: SL ${stopLossPrice}`
+            );
+        }
 
         return result;
 
@@ -1953,10 +2185,11 @@ async function placeOpenOrder(
             retryQuantity;
 
         order.newClientOrderId =
-            `${clientOrderId}_R`.slice(
-                0,
-                36
-            );
+            `${clientOrderId}_R`
+                .slice(
+                    0,
+                    36
+                );
 
         const result =
             await weexRequest(
@@ -1981,7 +2214,7 @@ async function placeOpenOrder(
         ensureOrderAccepted(
             symbol,
             result,
-            "RETRY OPEN ORDER + TP/SL"
+            "RETRY OPEN ORDER"
         );
 
         return result;
@@ -2086,6 +2319,7 @@ function calculateTpSl(
             ),
 
         tpPercent,
+
         slPercent
     };
 }
@@ -2093,8 +2327,18 @@ function calculateTpSl(
 // ============================================================
 // PLACE TP / SL
 // ============================================================
-// KEPT FOR COMPATIBILITY WITH EXISTING CODE.
-// NEW OPEN ORDERS ALREADY USE NATIVE TP/SL.
+//
+// KEPT FOR COMPATIBILITY.
+//
+// IMPORTANT:
+// placeOpenOrder() already attaches native TP/SL.
+//
+// Therefore the server should NOT call placeTpSl()
+// immediately after placeOpenOrder(), otherwise duplicate
+// TP/SL protection can be created.
+//
+// This function remains available for existing code that
+// explicitly needs separate TP/SL orders.
 // ============================================================
 
 async function placeTpSl(
@@ -2127,7 +2371,7 @@ async function placeTpSl(
     );
 
     console.log(
-        "SETTING TP / SL"
+        "SETTING SEPARATE TP / SL"
     );
 
     console.log(
@@ -2145,7 +2389,7 @@ async function placeTpSl(
     );
 
     console.log(
-        "Actual WEEX entry:",
+        "Entry:",
         calculated.entryPrice
     );
 
@@ -2186,10 +2430,11 @@ async function placeTpSl(
         symbol,
 
         clientAlgoId:
-            `${baseId}_TP`.slice(
-                0,
-                36
-            ),
+            `${baseId}_TP`
+                .slice(
+                    0,
+                    36
+                ),
 
         planType:
             "TAKE_PROFIT",
@@ -2250,7 +2495,6 @@ async function placeTpSl(
         "TAKE PROFIT"
     );
 
-    console.log("");
     console.log(
         `${symbol}: TAKE PROFIT ACCEPTED`
     );
@@ -2263,10 +2507,11 @@ async function placeTpSl(
         symbol,
 
         clientAlgoId:
-            `${baseId}_SL`.slice(
-                0,
-                36
-            ),
+            `${baseId}_SL`
+                .slice(
+                    0,
+                    36
+                ),
 
         planType:
             "STOP_LOSS",
@@ -2327,7 +2572,6 @@ async function placeTpSl(
         "STOP LOSS"
     );
 
-    console.log("");
     console.log(
         `${symbol}: STOP LOSS ACCEPTED`
     );
@@ -2347,8 +2591,11 @@ async function placeTpSl(
 
     return {
         success: true,
+
         symbol,
+
         direction,
+
         quantity:
             formattedQuantity,
 
@@ -2362,10 +2609,13 @@ async function placeTpSl(
             calculated.stopLossPrice,
 
         tpPercent,
+
         slPercent,
+
         triggerPriceType,
 
         tpResult,
+
         slResult
     };
 }
@@ -2378,9 +2628,10 @@ function buildCloseOrder(
     symbol,
     direction,
     quantity,
-    clientOrderId
+    clientOrderId,
+    positionId = null
 ) {
-    return {
+    const order = {
         symbol,
 
         side:
@@ -2402,6 +2653,20 @@ function buildCloseOrder(
         reduceOnly:
             true
     };
+
+    // --------------------------------------------------------
+    // WEEX V3 CURRENT POSITION-ID SUPPORT
+    // --------------------------------------------------------
+
+    if (
+        positionId !== null &&
+        positionId !== undefined
+    ) {
+        order.positionId =
+            positionId;
+    }
+
+    return order;
 }
 
 // ============================================================
@@ -2435,6 +2700,11 @@ async function closePosition(position) {
             position.direction,
             quantity,
             `TV_CLOSE_${symbol}_${Date.now()}`
+                .slice(
+                    0,
+                    36
+                ),
+            position.id || null
         );
 
     console.log("");
@@ -2463,6 +2733,11 @@ async function closePosition(position) {
     console.log(
         "Quantity:",
         quantity
+    );
+
+    console.log(
+        "Position ID:",
+        position.id || "NOT AVAILABLE"
     );
 
     console.log(
@@ -2532,6 +2807,11 @@ async function closePosition(position) {
                 position.direction,
                 quantity,
                 `TV_CLOSE_${symbol}_${Date.now()}_R`
+                    .slice(
+                        0,
+                        36
+                    ),
+                position.id || null
             );
 
         const result =
@@ -2607,6 +2887,10 @@ async function waitForPosition(
         );
     }
 
+    console.warn(
+        `${symbol}: FAILED to confirm ${expectedDirection}`
+    );
+
     return false;
 }
 
@@ -2616,38 +2900,54 @@ async function waitForPosition(
 
 module.exports = {
     CONTRACT_INFO,
+
     SUPPORTED_SYMBOLS,
 
     normalizeSymbol,
+
     weexRequest,
 
     getSymbolSettings,
+
     getContract,
 
     loadAllContracts,
 
     getPrice,
+
     getOrderBook,
+
     getFuturesBalance,
+
     getCurrentPosition,
+
+    getAllOpenPositions,
+
     getSymbolConfig,
 
     ensureLeverage,
 
     calculatePosition,
+
     printPosition,
 
     formatQuantity,
+
     formatPrice,
 
     extractStepSizeFromError,
 
     buildOpenOrder,
+
     placeOpenOrder,
 
     calculateTpSl,
+
     placeTpSl,
 
+    buildCloseOrder,
+
     closePosition,
+
     waitForPosition
 };

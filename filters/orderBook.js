@@ -2,97 +2,26 @@
 // WEEX ORDER BOOK FILTER
 // ============================================================
 //
-//
-// EASY SETTINGS ARE AT THE TOP.
-//
-// Change ONLY the CONST SETTINGS section when testing.
-//
-// ============================================================
-
-
-// ============================================================
-// CONST SETTINGS - EASY TO CHANGE
-// ============================================================
-
-// ------------------------------------------------------------
-// ORDER BOOK FILTER
-// ------------------------------------------------------------
-//
-// true  = filter ACTIVE
-// false = filter completely BYPASSED
-//
-const ORDER_BOOK_FILTER_ENABLED = true;
-
-
-// ------------------------------------------------------------
-// ORDER BOOK DEPTH
-// ------------------------------------------------------------
-//
-// Number of order-book levels used.
-//
-// 50  = faster / more local
-// 100 = medium
-// 200 = deeper
-//
-const ORDER_BOOK_DEPTH = 200;
-
-
-// ------------------------------------------------------------
-// IMBALANCE
-// ------------------------------------------------------------
-//
-// LONG:
-// Trade is allowed when imbalance >= LONG_MIN_IMBALANCE
-//
-// SHORT:
-// Trade is allowed when imbalance <= SHORT_MAX_IMBALANCE
-//
-// Examples:
-//
-// VERY LIGHT
-// LONG  = +0.01
-// SHORT = -0.01
-//
-// LIGHT
-// LONG  = +0.05
-// SHORT = -0.05
-//
-// NORMAL
-// LONG  = +0.10
-// SHORT = -0.10
-//
-// STRONG
-// LONG  = +0.15
-// SHORT = -0.15
-//
-// RESTRICTIVE
-// LONG  = +0.20
-// SHORT = -0.20
-//
-// VERY RESTRICTIVE
-// LONG  = +0.30
-// SHORT = -0.30
-//
-const LONG_MIN_IMBALANCE = 0.01;
-const SHORT_MAX_IMBALANCE = -0.01;
-
-
-// ------------------------------------------------------------
-// BID / ASK RATIOS
-// ------------------------------------------------------------
+// The order-book settings are loaded from config.js.
 //
 // IMPORTANT:
+// config.js is the SINGLE SOURCE OF TRUTH.
 //
-// Ratios are MONITORED only.
+// The filter:
+// - Uses imbalance to decide PASS/BLOCK.
+// - Monitors bid/ask ratios.
+// - Does NOT use ratios to block trades.
 //
-// They DO NOT block trades.
-//
-// They are returned in the result and shown in the logs.
-//
-// ------------------------------------------------------------
+// ============================================================
 
-const MIN_BID_ASK_RATIO = 1.05;
-const MIN_ASK_BID_RATIO = 1.05;
+const {
+    ORDER_BOOK_FILTER_ENABLED,
+    ORDER_BOOK_DEPTH,
+    LONG_MIN_IMBALANCE,
+    SHORT_MAX_IMBALANCE,
+    MIN_BID_ASK_RATIO,
+    MIN_ASK_BID_RATIO
+} = require("../config/config");
 
 
 // ============================================================
@@ -115,9 +44,9 @@ function calculateOrderBookPressure(orderBook) {
     let askLiquidity = 0;
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // BID LIQUIDITY
-    // ========================================================
+    // --------------------------------------------------------
 
     for (const level of bids) {
 
@@ -140,9 +69,9 @@ function calculateOrderBookPressure(orderBook) {
     }
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // ASK LIQUIDITY
-    // ========================================================
+    // --------------------------------------------------------
 
     for (const level of asks) {
 
@@ -165,16 +94,18 @@ function calculateOrderBookPressure(orderBook) {
     }
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // TOTAL LIQUIDITY
-    // ========================================================
+    // --------------------------------------------------------
 
     const totalLiquidity =
         bidLiquidity +
         askLiquidity;
 
 
-    if (totalLiquidity <= 0) {
+    if (
+        totalLiquidity <= 0
+    ) {
 
         throw new Error(
             "WEEX order book contains no usable liquidity."
@@ -182,9 +113,9 @@ function calculateOrderBookPressure(orderBook) {
     }
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // PERCENTAGES
-    // ========================================================
+    // --------------------------------------------------------
 
     const bidPercentage =
         bidLiquidity /
@@ -195,22 +126,20 @@ function calculateOrderBookPressure(orderBook) {
         totalLiquidity;
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // IMBALANCE
-    // ========================================================
-    //
-    // Formula:
+    // --------------------------------------------------------
     //
     // (BID - ASK) / (BID + ASK)
     //
-    // Positive = more bid liquidity
-    // Negative = more ask liquidity
+    // Positive = bid pressure
+    // Negative = ask pressure
     //
-    // +0.10 = 10% bid-side advantage
+    // +0.10 = 10% bid advantage
     //  0.00 = balanced
-    // -0.10 = 10% ask-side advantage
+    // -0.10 = 10% ask advantage
     //
-    // ========================================================
+    // --------------------------------------------------------
 
     const imbalance =
         (
@@ -220,9 +149,9 @@ function calculateOrderBookPressure(orderBook) {
         totalLiquidity;
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // RATIOS
-    // ========================================================
+    // --------------------------------------------------------
 
     const bidAskRatio =
         askLiquidity > 0
@@ -257,10 +186,9 @@ function calculateOrderBookPressure(orderBook) {
 // CHECK ORDER BOOK
 // ============================================================
 //
-// getOrderBook is passed into this function.
+// getOrderBook is injected from weex.js.
 //
-// This keeps the order-book module independent from the WEEX
-// request module and avoids circular dependencies.
+// This avoids circular dependencies.
 //
 // ============================================================
 
@@ -304,20 +232,10 @@ async function checkOrderBook(
     // ========================================================
     // FILTER DISABLED
     // ========================================================
-    //
-    // If disabled:
-    //
-    // TradingView signal
-    //        ↓
-    // Order book bypassed
-    //        ↓
-    // Trade allowed
-    //
-    // Useful for A/B testing.
-    //
-    // ========================================================
 
-    if (!ORDER_BOOK_FILTER_ENABLED) {
+    if (
+        !ORDER_BOOK_FILTER_ENABLED
+    ) {
 
         console.log("");
 
@@ -339,7 +257,7 @@ async function checkOrderBook(
         );
 
         console.log(
-            "ORDER BOOK FILTER:",
+            "Filter:",
             "DISABLED"
         );
 
@@ -455,14 +373,13 @@ async function checkOrderBook(
 
     const pressure =
         calculateOrderBookPressure({
-
             bids,
             asks
         });
 
 
     // ========================================================
-    // GENERAL ORDER BOOK LOG
+    // GENERAL LOG
     // ========================================================
 
     console.log("");
@@ -527,16 +444,14 @@ async function checkOrderBook(
     console.log(
         "Bid percentage:",
         (
-            pressure.bidPercentage *
-            100
+            pressure.bidPercentage * 100
         ).toFixed(2) + "%"
     );
 
     console.log(
         "Ask percentage:",
         (
-            pressure.askPercentage *
-            100
+            pressure.askPercentage * 100
         ).toFixed(2) + "%"
     );
 
@@ -564,37 +479,25 @@ async function checkOrderBook(
         direction === "LONG"
     ) {
 
-        // ====================================================
-        // IMBALANCE CHECK
-        // ====================================================
-
         const imbalancePass =
             pressure.imbalance >=
             LONG_MIN_IMBALANCE;
 
-
-        // ====================================================
-        // RATIO CHECK
-        // ====================================================
-        //
-        // Ratio is monitored only.
-        //
-        // It does NOT block the trade.
-        //
-        // ====================================================
 
         const ratioPass =
             pressure.bidAskRatio >=
             MIN_BID_ASK_RATIO;
 
 
-        // ====================================================
-        // FINAL DECISION
-        // ====================================================
+        // ----------------------------------------------------
+        // IMPORTANT
+        // ----------------------------------------------------
         //
-        // ONLY imbalance blocks LONG.
+        // Ratio is MONITORED only.
         //
-        // ====================================================
+        // It does NOT block LONG.
+        //
+        // ----------------------------------------------------
 
         const allowed =
             imbalancePass;
@@ -637,7 +540,7 @@ async function checkOrderBook(
             "Ratio:",
             ratioPass
                 ? "PASS"
-                : "FAIL - NOT BLOCKING"
+                : "FAIL - MONITOR ONLY"
         );
 
         console.log(
@@ -700,28 +603,20 @@ async function checkOrderBook(
         SHORT_MAX_IMBALANCE;
 
 
-    // ========================================================
-    // RATIO CHECK
-    // ========================================================
-    //
-    // Ratio is monitored only.
-    //
-    // It does NOT block the trade.
-    //
-    // ========================================================
-
     const ratioPass =
         pressure.askBidRatio >=
         MIN_ASK_BID_RATIO;
 
 
-    // ========================================================
-    // FINAL DECISION
-    // ========================================================
+    // --------------------------------------------------------
+    // IMPORTANT
+    // --------------------------------------------------------
     //
-    // ONLY imbalance blocks SHORT.
+    // Ratio is MONITORED only.
     //
-    // ========================================================
+    // It does NOT block SHORT.
+    //
+    // --------------------------------------------------------
 
     const allowed =
         imbalancePass;
@@ -764,7 +659,7 @@ async function checkOrderBook(
         "Ratio:",
         ratioPass
             ? "PASS"
-            : "FAIL - NOT BLOCKING"
+            : "FAIL - MONITOR ONLY"
     );
 
     console.log(
@@ -828,3 +723,4 @@ module.exports = {
 
     checkOrderBook
 };
+

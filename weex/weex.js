@@ -7,7 +7,13 @@ const {
     API_PASSPHRASE,
     DEFAULT_MARGIN,
     DEFAULT_LEVERAGE,
-    REQUIRED_MARGIN_MODE
+    REQUIRED_MARGIN_MODE,
+
+    // TP / SL FROM CONFIG
+    TP_SL_ENABLED,
+    TAKE_PROFIT_PERCENT,
+    STOP_LOSS_PERCENT,
+    TP_SL_TRIGGER_TYPE
 } = require("../config/config");
 
 // ============================================================
@@ -15,7 +21,6 @@ const {
 // ============================================================
 
 const CONTRACT_INFO = {};
-
 const SUPPORTED_SYMBOLS = new Set();
 
 // ============================================================
@@ -61,10 +66,9 @@ function safeInteger(value, fallback) {
 // ============================================================
 
 function normalizeSymbol(symbol) {
-    let value =
-        String(symbol || "")
-            .trim()
-            .toUpperCase();
+    let value = String(symbol || "")
+        .trim()
+        .toUpperCase();
 
     if (!value) {
         return "";
@@ -75,11 +79,8 @@ function normalizeSymbol(symbol) {
     }
 
     value = value.replace(/\//g, "");
-
     value = value.replace(/\.P$/i, "");
-
     value = value.replace(/:PERP$/i, "");
-
     value = value.replace(/\s+/g, "");
 
     return value;
@@ -114,10 +115,7 @@ function decimalPlaces(value) {
 // FLOOR TO STEP
 // ============================================================
 
-function floorToStep(
-    value,
-    stepSize
-) {
+function floorToStep(value, stepSize) {
     if (
         !Number.isFinite(value) ||
         value <= 0
@@ -132,43 +130,34 @@ function floorToStep(
         return value;
     }
 
-    const precision =
-        Math.max(
-            decimalPlaces(value),
-            decimalPlaces(stepSize),
-            12
-        );
+    const precision = Math.max(
+        decimalPlaces(value),
+        decimalPlaces(stepSize),
+        12
+    );
 
-    const multiplier =
-        Math.pow(
-            10,
-            precision
-        );
+    const multiplier = Math.pow(
+        10,
+        precision
+    );
 
-    const valueInt =
-        Math.floor(
-            value * multiplier +
-            1e-8
-        );
+    const valueInt = Math.floor(
+        value * multiplier + 1e-8
+    );
 
-    const stepInt =
-        Math.round(
-            stepSize * multiplier
-        );
+    const stepInt = Math.round(
+        stepSize * multiplier
+    );
 
     if (stepInt <= 0) {
         return value;
     }
 
     const resultInt =
-        Math.floor(
-            valueInt / stepInt
-        ) * stepInt;
+        Math.floor(valueInt / stepInt) *
+        stepInt;
 
-    return (
-        resultInt /
-        multiplier
-    );
+    return resultInt / multiplier;
 }
 
 // ============================================================
@@ -176,20 +165,15 @@ function floorToStep(
 // ============================================================
 
 function getSymbolSettings(symbol) {
-    if (
-        !SUPPORTED_SYMBOLS.has(symbol)
-    ) {
+    if (!SUPPORTED_SYMBOLS.has(symbol)) {
         throw new Error(
             `Unsupported or unavailable WEEX symbol: ${symbol}`
         );
     }
 
     return {
-        margin:
-            DEFAULT_MARGIN,
-
-        leverage:
-            DEFAULT_LEVERAGE
+        margin: DEFAULT_MARGIN,
+        leverage: DEFAULT_LEVERAGE
     };
 }
 
@@ -210,9 +194,7 @@ function signRequest(
         requestPath;
 
     if (queryString) {
-        message +=
-            "?" +
-            queryString;
+        message += "?" + queryString;
     }
 
     if (body) {
@@ -228,9 +210,7 @@ function signRequest(
             message,
             "utf8"
         )
-        .digest(
-            "base64"
-        );
+        .digest("base64");
 }
 
 // ============================================================
@@ -243,8 +223,7 @@ async function weexRequest(
     params = null
 ) {
     const upperMethod =
-        String(method)
-            .toUpperCase();
+        String(method).toUpperCase();
 
     const isPublicMarketEndpoint =
         endpoint.startsWith(
@@ -281,13 +260,12 @@ async function weexRequest(
     ) {
         queryString =
             new URLSearchParams(
-                Object.entries(params)
-                    .map(
-                        ([key, value]) => [
-                            key,
-                            String(value)
-                        ]
-                    )
+                Object.entries(params).map(
+                    ([key, value]) => [
+                        key,
+                        String(value)
+                    ]
+                )
             ).toString();
     }
 
@@ -295,13 +273,10 @@ async function weexRequest(
     // POST BODY
     // --------------------------------------------------------
 
-    if (
-        upperMethod === "POST"
-    ) {
-        body =
-            JSON.stringify(
-                params || {}
-            );
+    if (upperMethod === "POST") {
+        body = JSON.stringify(
+            params || {}
+        );
     }
 
     // --------------------------------------------------------
@@ -322,21 +297,16 @@ async function weexRequest(
         endpoint;
 
     if (queryString) {
-        url +=
-            "?" +
-            queryString;
+        url += "?" + queryString;
     }
 
     console.log("");
-
     console.log(
         "------------------------------------------------------------"
     );
-
     console.log(
         "WEEX REQUEST"
     );
-
     console.log(
         upperMethod,
         endpoint
@@ -364,9 +334,7 @@ async function weexRequest(
             "TradingView-WEEX-Server-V3/1.0"
     };
 
-    if (
-        !isPublicMarketEndpoint
-    ) {
+    if (!isPublicMarketEndpoint) {
         headers["ACCESS-KEY"] =
             API_KEY;
 
@@ -407,18 +375,13 @@ async function weexRequest(
     let data;
 
     try {
-        data =
-            JSON.parse(text);
+        data = JSON.parse(text);
     } catch {
-        data =
-            text;
+        data = text;
     }
 
-    if (
-        !response.ok
-    ) {
+    if (!response.ok) {
         console.error("");
-
         console.error(
             "WEEX ERROR:"
         );
@@ -458,9 +421,7 @@ async function weexRequest(
 // NORMALIZE CONTRACT
 // ============================================================
 
-function normalizeContract(
-    contract
-) {
+function normalizeContract(contract) {
     const quantityPrecision =
         safeInteger(
             contract?.quantityPrecision,
@@ -553,19 +514,12 @@ function normalizeContract(
             ),
 
         quantityPrecision,
-
         pricePrecision,
-
         stepSize,
-
         minOrderSize,
-
         maxOrderSize,
-
         maxPositionSize,
-
         marketOpenLimitSize,
-
         maxLeverage
     };
 }
@@ -574,9 +528,7 @@ function normalizeContract(
 // GET CONTRACT
 // ============================================================
 
-function getContract(
-    symbol
-) {
+function getContract(symbol) {
     const info =
         CONTRACT_INFO[symbol];
 
@@ -595,15 +547,12 @@ function getContract(
 
 async function loadAllContracts() {
     console.log("");
-
     console.log(
         "============================================================"
     );
-
     console.log(
         "LOADING ALL WEEX USDT-M CONTRACTS"
     );
-
     console.log(
         "============================================================"
     );
@@ -621,16 +570,13 @@ async function loadAllContracts() {
             ? exchangeInfo.symbols
             : [];
 
-    if (
-        contracts.length === 0
-    ) {
+    if (contracts.length === 0) {
         throw new Error(
             "WEEX returned no contracts from exchangeInfo."
         );
     }
 
-    let apiTradingSet =
-        null;
+    let apiTradingSet = null;
 
     try {
         const apiTradingData =
@@ -648,9 +594,7 @@ async function loadAllContracts() {
                     ? apiTradingData.symbols
                     : [];
 
-        if (
-            apiSymbols.length > 0
-        ) {
+        if (apiSymbols.length > 0) {
             apiTradingSet =
                 new Set(
                     apiSymbols.map(
@@ -663,15 +607,12 @@ async function loadAllContracts() {
         }
     } catch (error) {
         console.warn("");
-
         console.warn(
             "Could not retrieve apiTradingSymbols."
         );
-
         console.warn(
             "Falling back to exchangeInfo."
         );
-
         console.warn(
             error.message
         );
@@ -679,9 +620,7 @@ async function loadAllContracts() {
 
     SUPPORTED_SYMBOLS.clear();
 
-    for (
-        const contract of contracts
-    ) {
+    for (const contract of contracts) {
         const symbol =
             normalizeSymbol(
                 contract?.symbol
@@ -736,7 +675,6 @@ async function loadAllContracts() {
     }
 
     console.log("");
-
     console.log(
         "WEEX AVAILABLE USDT-M SYMBOLS:",
         SUPPORTED_SYMBOLS.size
@@ -761,7 +699,26 @@ async function loadAllContracts() {
     );
 
     console.log(
-        `Target notional = ${DEFAULT_MARGIN * DEFAULT_LEVERAGE} USDT`
+        `Target notional = ${
+            DEFAULT_MARGIN *
+            DEFAULT_LEVERAGE
+        } USDT`
+    );
+
+    console.log(
+        `TP/SL enabled = ${TP_SL_ENABLED}`
+    );
+
+    console.log(
+        `TP = ${TAKE_PROFIT_PERCENT}%`
+    );
+
+    console.log(
+        `SL = ${STOP_LOSS_PERCENT}%`
+    );
+
+    console.log(
+        `TP/SL trigger = ${TP_SL_TRIGGER_TYPE}`
     );
 
     console.log(
@@ -783,9 +740,7 @@ async function loadAllContracts() {
 // GET PRICE
 // ============================================================
 
-async function getPrice(
-    symbol
-) {
+async function getPrice(symbol) {
     const data =
         await weexRequest(
             "GET",
@@ -839,7 +794,6 @@ async function getPrice(
         (bid + ask) / 2;
 
     console.log("");
-
     console.log(
         `${symbol} PRICE`
     );
@@ -865,26 +819,19 @@ async function getPrice(
 // ============================================================
 // GET ORDER BOOK
 // ============================================================
-//
-// READ ONLY.
-// NEVER places an order.
-// ============================================================
 
 async function getOrderBook(
     symbol,
     limit = 15
 ) {
-    const data =
-        await weexRequest(
-            "GET",
-            "/capi/v3/market/depth",
-            {
-                symbol,
-                limit
-            }
-        );
-
-    return data;
+    return await weexRequest(
+        "GET",
+        "/capi/v3/market/depth",
+        {
+            symbol,
+            limit
+        }
+    );
 }
 
 // ============================================================
@@ -934,7 +881,6 @@ async function getFuturesBalance() {
         );
 
     console.log("");
-
     console.log(
         "WEEX FUTURES BALANCE"
     );
@@ -961,9 +907,7 @@ async function getFuturesBalance() {
 // GET CURRENT POSITION
 // ============================================================
 
-async function getCurrentPosition(
-    symbol
-) {
+async function getCurrentPosition(symbol) {
     const data =
         await weexRequest(
             "GET",
@@ -1000,15 +944,9 @@ async function getCurrentPosition(
 
         return {
             symbol,
-
-            direction:
-                "FLAT",
-
-            quantity:
-                0,
-
-            available:
-                0
+            direction: "FLAT",
+            quantity: 0,
+            available: 0
         };
     }
 
@@ -1093,16 +1031,13 @@ async function getCurrentPosition(
             ),
 
         marginType:
-            position.marginType ||
-            "",
+            position.marginType || "",
 
         separatedMode:
-            position.separatedMode ||
-            ""
+            position.separatedMode || ""
     };
 
     console.log("");
-
     console.log(
         `${symbol} POSITION`
     );
@@ -1159,9 +1094,7 @@ async function getCurrentPosition(
 // GET SYMBOL CONFIG
 // ============================================================
 
-async function getSymbolConfig(
-    symbol
-) {
+async function getSymbolConfig(symbol) {
     const data =
         await weexRequest(
             "GET",
@@ -1173,19 +1106,14 @@ async function getSymbolConfig(
 
     let configs;
 
-    if (
-        Array.isArray(data)
-    ) {
-        configs =
-            data;
+    if (Array.isArray(data)) {
+        configs = data;
     } else if (
         Array.isArray(data?.data)
     ) {
-        configs =
-            data.data;
+        configs = data.data;
     } else {
-        configs =
-            [data];
+        configs = [data];
     }
 
     const config =
@@ -1210,18 +1138,14 @@ async function getSymbolConfig(
 // NORMALIZE MARGIN MODE
 // ============================================================
 
-function normalizeMarginMode(
-    config
-) {
+function normalizeMarginMode(config) {
     const values = [
         config?.marginType,
         config?.marginMode,
         config?.marginModeType
     ];
 
-    for (
-        const value of values
-    ) {
+    for (const value of values) {
         if (
             value === undefined ||
             value === null
@@ -1255,9 +1179,7 @@ function normalizeMarginMode(
 // GET CONFIGURED LEVERAGES
 // ============================================================
 
-function getConfiguredLeverages(
-    config
-) {
+function getConfiguredLeverages(config) {
     return {
         cross:
             safeNumber(
@@ -1283,9 +1205,7 @@ function getConfiguredLeverages(
 // ENSURE LEVERAGE
 // ============================================================
 
-async function ensureLeverage(
-    symbol
-) {
+async function ensureLeverage(symbol) {
     const settings =
         getSymbolSettings(
             symbol
@@ -1335,7 +1255,6 @@ async function ensureLeverage(
         );
 
     console.log("");
-
     console.log(
         `${symbol}: ISOLATED leverage currently ` +
         `LONG=${current.isolatedLong}x ` +
@@ -1353,11 +1272,8 @@ async function ensureLeverage(
         );
 
         return {
-            changed:
-                false,
-
+            changed: false,
             marginMode,
-
             leverage:
                 settings.leverage
         };
@@ -1386,7 +1302,6 @@ async function ensureLeverage(
         );
 
     console.log("");
-
     console.log(
         `${symbol}: leverage updated`
     );
@@ -1400,12 +1315,8 @@ async function ensureLeverage(
     );
 
     return {
-        changed:
-            true,
-
-        marginMode:
-            "ISOLATED",
-
+        changed: true,
+        marginMode: "ISOLATED",
         leverage:
             settings.leverage
     };
@@ -1456,6 +1367,35 @@ function formatQuantity(
 }
 
 // ============================================================
+// FORMAT PRICE
+// ============================================================
+
+function formatPrice(
+    symbol,
+    price
+) {
+    const contract =
+        getContract(
+            symbol
+        );
+
+    if (
+        !Number.isFinite(price) ||
+        price <= 0
+    ) {
+        throw new Error(
+            `${symbol}: invalid price ${price}`
+        );
+    }
+
+    return Number(
+        price.toFixed(
+            contract.pricePrecision
+        )
+    );
+}
+
+// ============================================================
 // CALCULATE POSITION
 // ============================================================
 
@@ -1496,9 +1436,7 @@ function calculatePosition(
             contract.stepSize
         );
 
-    if (
-        quantity <= 0
-    ) {
+    if (quantity <= 0) {
         throw new Error(
             `${symbol}: calculated quantity is zero.`
         );
@@ -1583,7 +1521,6 @@ function printPosition(
     calculation
 ) {
     console.log("");
-
     console.log(
         "============================================================"
     );
@@ -1655,18 +1592,15 @@ function printPosition(
 // STEP SIZE FROM WEEX ERROR
 // ============================================================
 
-function extractStepSizeFromError(
-    error
-) {
+function extractStepSizeFromError(error) {
     const text =
         JSON.stringify(
-            error?.data ||
-            ""
+            error?.data || ""
         );
 
     const match =
         text.match(
-            /stepSize\s*['"]?([0-9]+(?:\.[0-9]+)?)['"]?/i
+            /stepSize\s*['"]?\s*([0-9]+(?:\.[0-9]+)?)['"]?/i
         );
 
     if (!match) {
@@ -1689,6 +1623,45 @@ function extractStepSizeFromError(
 }
 
 // ============================================================
+// CHECK WEEX ORDER RESPONSE
+// ============================================================
+
+function ensureOrderAccepted(
+    symbol,
+    result,
+    label
+) {
+    const entries =
+        Array.isArray(result)
+            ? result
+            : [result];
+
+    if (
+        entries.length === 0
+    ) {
+        throw new Error(
+            `${symbol}: ${label} returned an empty response.`
+        );
+    }
+
+    const failed =
+        entries.find(
+            item =>
+                item?.success !== true
+        );
+
+    if (failed) {
+        throw new Error(
+            `${symbol}: ${label} was rejected. ` +
+            `errorCode=${failed?.errorCode || "UNKNOWN"} ` +
+            `errorMessage=${failed?.errorMessage || "UNKNOWN"}`
+        );
+    }
+
+    return true;
+}
+
+// ============================================================
 // BUILD OPEN ORDER
 // ============================================================
 
@@ -1696,9 +1669,11 @@ function buildOpenOrder(
     symbol,
     direction,
     quantity,
-    clientOrderId
+    clientOrderId,
+    takeProfitPrice = null,
+    stopLossPrice = null
 ) {
-    return {
+    const order = {
         symbol,
 
         side:
@@ -1717,6 +1692,34 @@ function buildOpenOrder(
         newClientOrderId:
             clientOrderId
     };
+
+    // --------------------------------------------------------
+    // NATIVE WEEX TP / SL
+    // --------------------------------------------------------
+
+    if (
+        TP_SL_ENABLED &&
+        takeProfitPrice &&
+        stopLossPrice
+    ) {
+        order.tpTriggerPrice =
+            String(
+                takeProfitPrice
+            );
+
+        order.slTriggerPrice =
+            String(
+                stopLossPrice
+            );
+
+        order.TpWorkingType =
+            TP_SL_TRIGGER_TYPE;
+
+        order.SlWorkingType =
+            TP_SL_TRIGGER_TYPE;
+    }
+
+    return order;
 }
 
 // ============================================================
@@ -1729,7 +1732,10 @@ async function placeOpenOrder(
     calculation
 ) {
     const clientOrderId =
-        `TV_${symbol}_${direction}_${Date.now()}`;
+        `TV_${symbol}_${direction}_${Date.now()}`.slice(
+            0,
+            36
+        );
 
     let quantity =
         formatQuantity(
@@ -1737,20 +1743,173 @@ async function placeOpenOrder(
             calculation.quantity
         );
 
+    // --------------------------------------------------------
+    // GET CURRENT PRICE
+    // --------------------------------------------------------
+
+    const entryReferencePrice =
+        await getPrice(
+            symbol
+        );
+
+    // --------------------------------------------------------
+    // ALWAYS USE 2% TP + 2% SL
+    // --------------------------------------------------------
+
+    const tpPercent = 2;
+    const slPercent = 2;
+
+    let takeProfitPrice;
+    let stopLossPrice;
+
+    if (
+        direction === "LONG"
+    ) {
+        takeProfitPrice =
+            entryReferencePrice *
+            (1 + tpPercent / 100);
+
+        stopLossPrice =
+            entryReferencePrice *
+            (1 - slPercent / 100);
+    } else if (
+        direction === "SHORT"
+    ) {
+        takeProfitPrice =
+            entryReferencePrice *
+            (1 - tpPercent / 100);
+
+        stopLossPrice =
+            entryReferencePrice *
+            (1 + slPercent / 100);
+    } else {
+        throw new Error(
+            `${symbol}: invalid direction ${direction}`
+        );
+    }
+
+    takeProfitPrice =
+        formatPrice(
+            symbol,
+            takeProfitPrice
+        );
+
+    stopLossPrice =
+        formatPrice(
+            symbol,
+            stopLossPrice
+        );
+
+    // --------------------------------------------------------
+    // BUILD MARKET ORDER
+    // --------------------------------------------------------
+
     let order =
         buildOpenOrder(
             symbol,
             direction,
             quantity,
-            clientOrderId
+            clientOrderId,
+            takeProfitPrice,
+            stopLossPrice
         );
 
+    console.log("");
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "OPEN ORDER + NATIVE 2% TP / 2% SL"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "Symbol:",
+        symbol
+    );
+
+    console.log(
+        "Direction:",
+        direction
+    );
+
+    console.log(
+        "Reference price:",
+        entryReferencePrice
+    );
+
+    console.log(
+        "Quantity:",
+        quantity
+    );
+
+    console.log(
+        "TP:",
+        takeProfitPrice,
+        "(2%)"
+    );
+
+    console.log(
+        "SL:",
+        stopLossPrice,
+        "(2%)"
+    );
+
+    console.log(
+        "Trigger type:",
+        TP_SL_TRIGGER_TYPE
+    );
+
+    console.log(
+        "============================================================"
+    );
+
     try {
-        return await weexRequest(
-            "POST",
-            "/capi/v3/order",
-            order
+        const result =
+            await weexRequest(
+                "POST",
+                "/capi/v3/order",
+                order
+            );
+
+        console.log("");
+        console.log(
+            "OPEN ORDER RESPONSE:"
         );
+
+        console.log(
+            JSON.stringify(
+                result,
+                null,
+                2
+            )
+        );
+
+        ensureOrderAccepted(
+            symbol,
+            result,
+            "OPEN ORDER + TP/SL"
+        );
+
+        console.log("");
+        console.log(
+            `${symbol}: MARKET ORDER ACCEPTED`
+        );
+
+        console.log(
+            `${symbol}: TP ${takeProfitPrice}`
+        );
+
+        console.log(
+            `${symbol}: SL ${stopLossPrice}`
+        );
+
+        return result;
+
     } catch (error) {
         const step =
             extractStepSizeFromError(
@@ -1762,7 +1921,6 @@ async function placeOpenOrder(
         }
 
         console.warn("");
-
         console.warn(
             `${symbol}: WEEX reported required stepSize = ${step}`
         );
@@ -1777,7 +1935,6 @@ async function placeOpenOrder(
             );
 
         console.log("");
-
         console.log(
             `${symbol}: RETRYING ORDER`
         );
@@ -1792,20 +1949,425 @@ async function placeOpenOrder(
             retryQuantity
         );
 
-        order =
-            buildOpenOrder(
-                symbol,
-                direction,
-                retryQuantity,
-                `${clientOrderId}_R`
+        order.quantity =
+            retryQuantity;
+
+        order.newClientOrderId =
+            `${clientOrderId}_R`.slice(
+                0,
+                36
             );
 
-        return await weexRequest(
-            "POST",
-            "/capi/v3/order",
-            order
+        const result =
+            await weexRequest(
+                "POST",
+                "/capi/v3/order",
+                order
+            );
+
+        console.log("");
+        console.log(
+            "RETRY ORDER RESPONSE:"
+        );
+
+        console.log(
+            JSON.stringify(
+                result,
+                null,
+                2
+            )
+        );
+
+        ensureOrderAccepted(
+            symbol,
+            result,
+            "RETRY OPEN ORDER + TP/SL"
+        );
+
+        return result;
+    }
+}
+
+// ============================================================
+// CALCULATE TP / SL
+// ============================================================
+
+function calculateTpSl(
+    symbol,
+    direction,
+    entryPrice,
+    tpPercent = TAKE_PROFIT_PERCENT,
+    slPercent = STOP_LOSS_PERCENT
+) {
+    if (
+        direction !== "LONG" &&
+        direction !== "SHORT"
+    ) {
+        throw new Error(
+            `${symbol}: invalid TP/SL direction ${direction}`
         );
     }
+
+    if (
+        !Number.isFinite(entryPrice) ||
+        entryPrice <= 0
+    ) {
+        throw new Error(
+            `${symbol}: invalid TP/SL entry price ${entryPrice}`
+        );
+    }
+
+    if (
+        !Number.isFinite(tpPercent) ||
+        tpPercent <= 0
+    ) {
+        throw new Error(
+            `${symbol}: invalid TP percent ${tpPercent}`
+        );
+    }
+
+    if (
+        !Number.isFinite(slPercent) ||
+        slPercent <= 0
+    ) {
+        throw new Error(
+            `${symbol}: invalid SL percent ${slPercent}`
+        );
+    }
+
+    let takeProfitPrice;
+    let stopLossPrice;
+
+    if (
+        direction === "LONG"
+    ) {
+        takeProfitPrice =
+            entryPrice *
+            (
+                1 +
+                tpPercent / 100
+            );
+
+        stopLossPrice =
+            entryPrice *
+            (
+                1 -
+                slPercent / 100
+            );
+    } else {
+        takeProfitPrice =
+            entryPrice *
+            (
+                1 -
+                tpPercent / 100
+            );
+
+        stopLossPrice =
+            entryPrice *
+            (
+                1 +
+                slPercent / 100
+            );
+    }
+
+    return {
+        entryPrice,
+
+        takeProfitPrice:
+            formatPrice(
+                symbol,
+                takeProfitPrice
+            ),
+
+        stopLossPrice:
+            formatPrice(
+                symbol,
+                stopLossPrice
+            ),
+
+        tpPercent,
+        slPercent
+    };
+}
+
+// ============================================================
+// PLACE TP / SL
+// ============================================================
+// KEPT FOR COMPATIBILITY WITH EXISTING CODE.
+// NEW OPEN ORDERS ALREADY USE NATIVE TP/SL.
+// ============================================================
+
+async function placeTpSl(
+    symbol,
+    direction,
+    quantity,
+    entryPrice,
+    tpPercent = TAKE_PROFIT_PERCENT,
+    slPercent = STOP_LOSS_PERCENT,
+    triggerPriceType = TP_SL_TRIGGER_TYPE
+) {
+    const formattedQuantity =
+        formatQuantity(
+            symbol,
+            quantity
+        );
+
+    const calculated =
+        calculateTpSl(
+            symbol,
+            direction,
+            entryPrice,
+            tpPercent,
+            slPercent
+        );
+
+    console.log("");
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "SETTING TP / SL"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "Symbol:",
+        symbol
+    );
+
+    console.log(
+        "Direction:",
+        direction
+    );
+
+    console.log(
+        "Actual WEEX entry:",
+        calculated.entryPrice
+    );
+
+    console.log(
+        "TP:",
+        calculated.takeProfitPrice,
+        `(+${tpPercent}%)`
+    );
+
+    console.log(
+        "SL:",
+        calculated.stopLossPrice,
+        `(-${slPercent}%)`
+    );
+
+    console.log(
+        "Quantity:",
+        formattedQuantity
+    );
+
+    console.log(
+        "Trigger type:",
+        triggerPriceType
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    const baseId =
+        `TV_${symbol}_${Date.now()}`;
+
+    // --------------------------------------------------------
+    // TAKE PROFIT
+    // --------------------------------------------------------
+
+    const tpRequest = {
+        symbol,
+
+        clientAlgoId:
+            `${baseId}_TP`.slice(
+                0,
+                36
+            ),
+
+        planType:
+            "TAKE_PROFIT",
+
+        triggerPrice:
+            String(
+                calculated.takeProfitPrice
+            ),
+
+        executePrice:
+            "0",
+
+        quantity:
+            formattedQuantity,
+
+        positionSide:
+            direction,
+
+        triggerPriceType
+    };
+
+    console.log("");
+    console.log(
+        "TP REQUEST:"
+    );
+
+    console.log(
+        JSON.stringify(
+            tpRequest,
+            null,
+            2
+        )
+    );
+
+    const tpResult =
+        await weexRequest(
+            "POST",
+            "/capi/v3/placeTpSlOrder",
+            tpRequest
+        );
+
+    console.log("");
+    console.log(
+        "TP RESPONSE:"
+    );
+
+    console.log(
+        JSON.stringify(
+            tpResult,
+            null,
+            2
+        )
+    );
+
+    ensureOrderAccepted(
+        symbol,
+        tpResult,
+        "TAKE PROFIT"
+    );
+
+    console.log("");
+    console.log(
+        `${symbol}: TAKE PROFIT ACCEPTED`
+    );
+
+    // --------------------------------------------------------
+    // STOP LOSS
+    // --------------------------------------------------------
+
+    const slRequest = {
+        symbol,
+
+        clientAlgoId:
+            `${baseId}_SL`.slice(
+                0,
+                36
+            ),
+
+        planType:
+            "STOP_LOSS",
+
+        triggerPrice:
+            String(
+                calculated.stopLossPrice
+            ),
+
+        executePrice:
+            "0",
+
+        quantity:
+            formattedQuantity,
+
+        positionSide:
+            direction,
+
+        triggerPriceType
+    };
+
+    console.log("");
+    console.log(
+        "SL REQUEST:"
+    );
+
+    console.log(
+        JSON.stringify(
+            slRequest,
+            null,
+            2
+        )
+    );
+
+    const slResult =
+        await weexRequest(
+            "POST",
+            "/capi/v3/placeTpSlOrder",
+            slRequest
+        );
+
+    console.log("");
+    console.log(
+        "SL RESPONSE:"
+    );
+
+    console.log(
+        JSON.stringify(
+            slResult,
+            null,
+            2
+        )
+    );
+
+    ensureOrderAccepted(
+        symbol,
+        slResult,
+        "STOP LOSS"
+    );
+
+    console.log("");
+    console.log(
+        `${symbol}: STOP LOSS ACCEPTED`
+    );
+
+    console.log("");
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        `${symbol}: TP + SL SUCCESSFULLY PLACED`
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    return {
+        success: true,
+        symbol,
+        direction,
+        quantity:
+            formattedQuantity,
+
+        entryPrice:
+            calculated.entryPrice,
+
+        takeProfit:
+            calculated.takeProfitPrice,
+
+        stopLoss:
+            calculated.stopLossPrice,
+
+        tpPercent,
+        slPercent,
+        triggerPriceType,
+
+        tpResult,
+        slResult
+    };
 }
 
 // ============================================================
@@ -1846,20 +2408,15 @@ function buildCloseOrder(
 // CLOSE POSITION
 // ============================================================
 
-async function closePosition(
-    position
-) {
+async function closePosition(position) {
     if (
         !position ||
         position.direction === "FLAT" ||
         position.quantity <= 0
     ) {
         return {
-            success:
-                true,
-
-            reason:
-                "ALREADY_FLAT"
+            success: true,
+            reason: "ALREADY_FLAT"
         };
     }
 
@@ -1881,7 +2438,6 @@ async function closePosition(
         );
 
     console.log("");
-
     console.log(
         "============================================================"
     );
@@ -1923,7 +2479,6 @@ async function closePosition(
             );
 
         console.log("");
-
         console.log(
             "CLOSE ORDER RESPONSE:"
         );
@@ -1936,12 +2491,17 @@ async function closePosition(
             )
         );
 
-        return {
-            success:
-                true,
+        ensureOrderAccepted(
+            symbol,
+            result,
+            "CLOSE ORDER"
+        );
 
+        return {
+            success: true,
             result
         };
+
     } catch (error) {
         const step =
             extractStepSizeFromError(
@@ -1953,7 +2513,6 @@ async function closePosition(
         }
 
         console.warn("");
-
         console.warn(
             `${symbol}: close order reported stepSize ${step}`
         );
@@ -1982,10 +2541,14 @@ async function closePosition(
                 order
             );
 
-        return {
-            success:
-                true,
+        ensureOrderAccepted(
+            symbol,
+            result,
+            "RETRY CLOSE ORDER"
+        );
 
+        return {
+            success: true,
             result
         };
     }
@@ -2050,52 +2613,41 @@ async function waitForPosition(
 // ============================================================
 // EXPORTS
 // ============================================================
-//
-// IMPORTANT:
-//
-// Nothing in this file requires trading.js,
-// orderBook.js, or server_v3.js.
-//
-// ============================================================
 
 module.exports = {
     CONTRACT_INFO,
-
     SUPPORTED_SYMBOLS,
 
     normalizeSymbol,
-
     weexRequest,
 
     getSymbolSettings,
-
     getContract,
 
     loadAllContracts,
 
     getPrice,
-
     getOrderBook,
-
     getFuturesBalance,
-
     getCurrentPosition,
-
     getSymbolConfig,
 
     ensureLeverage,
 
     calculatePosition,
-
     printPosition,
 
     formatQuantity,
+    formatPrice,
 
     extractStepSizeFromError,
 
+    buildOpenOrder,
     placeOpenOrder,
 
-    closePosition,
+    calculateTpSl,
+    placeTpSl,
 
+    closePosition,
     waitForPosition
 };

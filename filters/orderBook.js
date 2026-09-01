@@ -11,21 +11,7 @@ const {
 
 
 // ============================================================
-// WEEX ORDER BOOK CONFIGURATION
-// ============================================================
-//
-// WEEX API:
-//     Request up to 200 levels.
-//
-// Confirmation depths:
-//     15 + 20 + 30 + 60
-//
-// Final confirmation:
-//     3 OF 4
-//
-// IMPORTANT:
-//     All four calculations use ONE WEEX snapshot.
-//
+// ORDER BOOK CONFIGURATION
 // ============================================================
 
 const WEEX_REQUEST_DEPTH = 200;
@@ -38,34 +24,11 @@ const REQUIRED_PASSED_DEPTHS = 3;
 // ============================================================
 // NORMALIZE ORDER BOOK
 // ============================================================
-//
-// Supports:
-//
-//     {
-//         bids: [...],
-//         asks: [...]
-//     }
-//
-// and:
-//
-//     {
-//         data: {
-//             bids: [...],
-//             asks: [...]
-//         }
-//     }
-//
-// ============================================================
 
 function normalizeOrderBookLevels(orderBook) {
 
     let bids = [];
     let asks = [];
-
-
-    // --------------------------------------------------------
-    // DIRECT FORMAT
-    // --------------------------------------------------------
 
     if (Array.isArray(orderBook?.bids)) {
         bids = orderBook.bids;
@@ -74,11 +37,6 @@ function normalizeOrderBookLevels(orderBook) {
     if (Array.isArray(orderBook?.asks)) {
         asks = orderBook.asks;
     }
-
-
-    // --------------------------------------------------------
-    // DATA FORMAT
-    // --------------------------------------------------------
 
     if (
         bids.length === 0 &&
@@ -94,11 +52,6 @@ function normalizeOrderBookLevels(orderBook) {
         asks = orderBook.data.asks;
     }
 
-
-    // --------------------------------------------------------
-    // SOME API RESPONSES MAY NEST DATA DEEPER
-    // --------------------------------------------------------
-
     if (
         bids.length === 0 &&
         Array.isArray(orderBook?.data?.data?.bids)
@@ -112,7 +65,6 @@ function normalizeOrderBookLevels(orderBook) {
     ) {
         asks = orderBook.data.data.asks;
     }
-
 
     return {
         bids,
@@ -137,14 +89,8 @@ function calculateOrderBookPressure(orderBook) {
             ? orderBook.asks
             : [];
 
-
     let bidLiquidity = 0;
     let askLiquidity = 0;
-
-
-    // --------------------------------------------------------
-    // BID LIQUIDITY
-    // --------------------------------------------------------
 
     for (const level of bids) {
 
@@ -165,11 +111,6 @@ function calculateOrderBookPressure(orderBook) {
         }
     }
 
-
-    // --------------------------------------------------------
-    // ASK LIQUIDITY
-    // --------------------------------------------------------
-
     for (const level of asks) {
 
         if (
@@ -189,18 +130,14 @@ function calculateOrderBookPressure(orderBook) {
         }
     }
 
-
     const totalLiquidity =
         bidLiquidity + askLiquidity;
 
-
     if (totalLiquidity <= 0) {
-
         throw new Error(
             "WEEX order book contains no usable liquidity."
         );
     }
-
 
     const bidPercentage =
         bidLiquidity / totalLiquidity;
@@ -208,41 +145,28 @@ function calculateOrderBookPressure(orderBook) {
     const askPercentage =
         askLiquidity / totalLiquidity;
 
-
     const imbalance =
-        (
-            bidLiquidity - askLiquidity
-        ) / totalLiquidity;
-
+        (bidLiquidity - askLiquidity) /
+        totalLiquidity;
 
     const bidAskRatio =
         askLiquidity > 0
             ? bidLiquidity / askLiquidity
             : Infinity;
 
-
     const askBidRatio =
         bidLiquidity > 0
             ? askLiquidity / bidLiquidity
             : Infinity;
 
-
     return {
-
         bidLiquidity,
-
         askLiquidity,
-
         totalLiquidity,
-
         bidPercentage,
-
         askPercentage,
-
         imbalance,
-
         bidAskRatio,
-
         askBidRatio
     };
 }
@@ -265,17 +189,11 @@ function evaluateDepth(
     const depthAsks =
         asks.slice(0, depth);
 
-
     const bidsAvailable =
         depthBids.length;
 
     const asksAvailable =
         depthAsks.length;
-
-
-    // --------------------------------------------------------
-    // NOT ENOUGH DATA
-    // --------------------------------------------------------
 
     if (
         bidsAvailable < depth ||
@@ -307,32 +225,16 @@ function evaluateDepth(
         };
     }
 
-
-    // --------------------------------------------------------
-    // CALCULATE PRESSURE
-    // --------------------------------------------------------
-
     const pressure =
         calculateOrderBookPressure({
-
             bids: depthBids,
-
             asks: depthAsks
         });
 
-
     let imbalancePass = false;
-
     let ratioPass = false;
 
-
-    // --------------------------------------------------------
-    // LONG
-    // --------------------------------------------------------
-
-    if (
-        direction === "LONG"
-    ) {
+    if (direction === "LONG") {
 
         imbalancePass =
             pressure.imbalance >=
@@ -343,14 +245,7 @@ function evaluateDepth(
             Number(MIN_BID_ASK_RATIO);
     }
 
-
-    // --------------------------------------------------------
-    // SHORT
-    // --------------------------------------------------------
-
-    else if (
-        direction === "SHORT"
-    ) {
+    else if (direction === "SHORT") {
 
         imbalancePass =
             pressure.imbalance <=
@@ -361,11 +256,9 @@ function evaluateDepth(
             Number(MIN_ASK_BID_RATIO);
     }
 
-
     const filterPass =
         imbalancePass &&
         ratioPass;
-
 
     return {
 
@@ -374,9 +267,7 @@ function evaluateDepth(
         available: true,
 
         levelsAvailable: {
-
             bids: bidsAvailable,
-
             asks: asksAvailable
         },
 
@@ -428,13 +319,7 @@ function evaluateDirection(
             .trim()
             .toUpperCase();
 
-
     const results = {};
-
-
-    // --------------------------------------------------------
-    // CALCULATE ALL FOUR DEPTHS
-    // --------------------------------------------------------
 
     for (
         const depth of CONFIRMATION_DEPTHS
@@ -449,17 +334,11 @@ function evaluateDirection(
             );
     }
 
-
     const availableResults =
         CONFIRMATION_DEPTHS.map(
             depth =>
                 results[depth]
         );
-
-
-    // --------------------------------------------------------
-    // CHECK AVAILABILITY
-    // --------------------------------------------------------
 
     const allDepthsAvailable =
         availableResults.every(
@@ -468,20 +347,17 @@ function evaluateDirection(
                 result.available === true
         );
 
-
     const passedDepths =
         availableResults.filter(
             result =>
                 result?.filterPass === true
         ).length;
 
-
     const availableDepths =
         availableResults.filter(
             result =>
                 result?.available === true
         ).length;
-
 
     const failedDepths =
         availableResults.filter(
@@ -490,56 +366,19 @@ function evaluateDirection(
                 result?.filterPass !== true
         ).length;
 
-
-    // --------------------------------------------------------
-    // FINAL 3 OF 4
-    // --------------------------------------------------------
-    //
-    // IMPORTANT:
-    //
-    // We require all four confirmation depths to exist.
-    //
-    // Therefore:
-    //
-    // 15 PASS
-    // 30 PASS
-    // 60 FAIL
-    // 90 PASS
-    //
-    // = 3 OF 4 = PASS
-    //
-    // But:
-    //
-    // 15 PASS
-    // 30 PASS
-    // 60 FAIL
-    // 90 NO DATA
-    //
-    // = BLOCKED
-    //
-    // because the 4-depth confirmation is incomplete.
-    //
-    // --------------------------------------------------------
-
     const confirmationPassed =
         allDepthsAvailable &&
         passedDepths >=
         REQUIRED_PASSED_DEPTHS;
 
-
     let confirmationReason;
 
-
-    if (
-        !allDepthsAvailable
-    ) {
+    if (!allDepthsAvailable) {
 
         confirmationReason =
             "INSUFFICIENT_ORDER_BOOK_DEPTH";
 
-    } else if (
-        confirmationPassed
-    ) {
+    } else if (confirmationPassed) {
 
         confirmationReason =
             `MULTI_DEPTH_CONFIRMED_${passedDepths}_OF_${CONFIRMATION_DEPTHS.length}`;
@@ -549,7 +388,6 @@ function evaluateDirection(
         confirmationReason =
             `MULTI_DEPTH_CONFIRMATION_FAILED_${passedDepths}_OF_${CONFIRMATION_DEPTHS.length}`;
     }
-
 
     return {
 
@@ -589,14 +427,17 @@ function evaluateDirection(
 // GET ONE WEEX SNAPSHOT
 // ============================================================
 //
-// ONE API REQUEST.
+// WEEX request:
+//     200 levels
 //
-// The returned snapshot is then reused for:
-//
+// Trading confirmation:
 //     15
+//     20
 //     30
 //     60
-//     90
+//
+// Final:
+//     3 OF 4
 //
 // ============================================================
 
@@ -608,7 +449,6 @@ async function getMultiDepthSnapshot(symbol) {
             WEEX_REQUEST_DEPTH
         );
 
-
     const {
         bids,
         asks
@@ -616,11 +456,6 @@ async function getMultiDepthSnapshot(symbol) {
         normalizeOrderBookLevels(
             rawOrderBook
         );
-
-
-    // --------------------------------------------------------
-    // EMPTY ORDER BOOK
-    // --------------------------------------------------------
 
     if (
         bids.length === 0 ||
@@ -633,52 +468,12 @@ async function getMultiDepthSnapshot(symbol) {
         );
     }
 
-
-    // --------------------------------------------------------
-    // IMPORTANT DIAGNOSTIC
-    // --------------------------------------------------------
-    //
-    // This tells us exactly how many levels WEEX returned.
-    //
-    // If this prints:
-    //
-    //     bids=200 asks=200
-    //
-    // 90-level calculations can work.
-    //
-    // If it prints:
-    //
-    //     bids=60 asks=60
-    //
-    // 90-level calculations cannot work.
-    //
-    // --------------------------------------------------------
-
     console.log(
         `[ORDER BOOK] ${symbol} | ` +
         `requested=${WEEX_REQUEST_DEPTH} | ` +
         `bids=${bids.length} | ` +
         `asks=${asks.length}`
     );
-
-
-    // --------------------------------------------------------
-    // 90-LEVEL DIAGNOSTIC
-    // --------------------------------------------------------
-
-    if (
-        bids.length < 90 ||
-        asks.length < 90
-    ) {
-
-        console.warn(
-            `[ORDER BOOK WARNING] ${symbol} | ` +
-            `90 levels unavailable | ` +
-            `bids=${bids.length}/90 | ` +
-            `asks=${asks.length}/90`
-        );
-    }
-
 
     return {
 
@@ -702,10 +497,6 @@ async function getMultiDepthSnapshot(symbol) {
 // ============================================================
 // ANALYZE BOTH DIRECTIONS
 // ============================================================
-//
-// Both LONG and SHORT use the SAME snapshot.
-//
-// ============================================================
 
 function analyzeOrderBookSnapshot(
     snapshot,
@@ -719,7 +510,6 @@ function analyzeOrderBookSnapshot(
             "LONG"
         );
 
-
     const short =
         evaluateDirection(
             snapshot.bids,
@@ -727,26 +517,17 @@ function analyzeOrderBookSnapshot(
             "SHORT"
         );
 
-
     let finalDirection =
         "NEUTRAL";
-
 
     let finalResult =
         null;
 
-
     const longPassed =
         long.confirmationPassed === true;
 
-
     const shortPassed =
         short.confirmationPassed === true;
-
-
-    // --------------------------------------------------------
-    // LONG
-    // --------------------------------------------------------
 
     if (
         longPassed &&
@@ -760,11 +541,6 @@ function analyzeOrderBookSnapshot(
             long;
     }
 
-
-    // --------------------------------------------------------
-    // SHORT
-    // --------------------------------------------------------
-
     else if (
         shortPassed &&
         !longPassed
@@ -776,11 +552,6 @@ function analyzeOrderBookSnapshot(
         finalResult =
             short;
     }
-
-
-    // --------------------------------------------------------
-    // CONFLICT
-    // --------------------------------------------------------
 
     else if (
         longPassed &&
@@ -794,11 +565,6 @@ function analyzeOrderBookSnapshot(
             null;
     }
 
-
-    // --------------------------------------------------------
-    // NEUTRAL
-    // --------------------------------------------------------
-
     else {
 
         finalDirection =
@@ -807,7 +573,6 @@ function analyzeOrderBookSnapshot(
         finalResult =
             null;
     }
-
 
     return {
 
@@ -847,10 +612,6 @@ function analyzeOrderBookSnapshot(
 // ============================================================
 // CHECK ORDER BOOK
 // ============================================================
-//
-// MAIN FUNCTION USED BY trading.js.
-//
-// ============================================================
 
 async function checkOrderBook(
     symbol,
@@ -862,7 +623,6 @@ async function checkOrderBook(
             .trim()
             .toUpperCase();
 
-
     if (!symbol) {
 
         throw new Error(
@@ -870,20 +630,12 @@ async function checkOrderBook(
         );
     }
 
-
-    // --------------------------------------------------------
-    // NORMALIZE DIRECTION
-    // --------------------------------------------------------
-
-    if (
-        direction !== null
-    ) {
+    if (direction !== null) {
 
         direction =
             String(direction)
                 .trim()
                 .toUpperCase();
-
 
         if (
             direction !== "LONG" &&
@@ -896,30 +648,15 @@ async function checkOrderBook(
         }
     }
 
-
-    // --------------------------------------------------------
-    // ONE WEEX SNAPSHOT
-    // --------------------------------------------------------
-
     const snapshot =
         await getMultiDepthSnapshot(
             symbol
         );
 
-
-    // --------------------------------------------------------
-    // ANALYZE
-    // --------------------------------------------------------
-
     const analysis =
         analyzeOrderBookSnapshot(
             snapshot
         );
-
-
-    // ========================================================
-    // SPECIFIC DIRECTION REQUESTED
-    // ========================================================
 
     if (
         direction === "LONG" ||
@@ -931,10 +668,8 @@ async function checkOrderBook(
                 direction.toLowerCase()
             ];
 
-
         const allowed =
             selected.confirmationPassed === true;
-
 
         return {
 
@@ -954,11 +689,6 @@ async function checkOrderBook(
                             ? "MULTI_DEPTH_DOES_NOT_SUPPORT_LONG"
                             : "MULTI_DEPTH_DOES_NOT_SUPPORT_SHORT"
                     ),
-
-
-            // ------------------------------------------------
-            // LEGACY 15-LEVEL VALUES
-            // ------------------------------------------------
 
             imbalance:
                 selected.results[15]?.imbalance ?? 0,
@@ -990,11 +720,6 @@ async function checkOrderBook(
             ratioPass:
                 selected.results[15]?.ratioPass ?? false,
 
-
-            // ------------------------------------------------
-            // CONFIRMATION
-            // ------------------------------------------------
-
             confirmationDepths:
                 [...CONFIRMATION_DEPTHS],
 
@@ -1019,13 +744,11 @@ async function checkOrderBook(
             failedDepths:
                 selected.failedDepths,
 
-
-            // ------------------------------------------------
-            // EXPLICIT DEPTH RESULTS
-            // ------------------------------------------------
-
             depth15:
                 selected.results[15],
+
+            depth20:
+                selected.results[20],
 
             depth30:
                 selected.results[30],
@@ -1033,34 +756,18 @@ async function checkOrderBook(
             depth60:
                 selected.results[60],
 
-            depth90:
-                selected.results[90],
-
-
-            // ------------------------------------------------
-            // ALL DEPTHS
-            // ------------------------------------------------
-
             depths:
                 selected.results,
-
 
             requestedDepth:
                 WEEX_REQUEST_DEPTH,
 
-
             availableDepth:
                 snapshot.availableDepth,
-
 
             analysis
         };
     }
-
-
-    // ========================================================
-    // NO SPECIFIC DIRECTION
-    // ========================================================
 
     return {
 
@@ -1121,7 +828,6 @@ async function compareOrderBookDepths(
             direction
         );
 
-
     console.log("");
 
     console.log(
@@ -1162,18 +868,12 @@ async function compareOrderBookDepths(
         `${REQUIRED_PASSED_DEPTHS} OF ${CONFIRMATION_DEPTHS.length}`
     );
 
-
-    // --------------------------------------------------------
-    // EACH DEPTH
-    // --------------------------------------------------------
-
     for (
         const depth of CONFIRMATION_DEPTHS
     ) {
 
         const r =
             result.depths[depth];
-
 
         console.log("");
 
@@ -1186,31 +886,26 @@ async function compareOrderBookDepths(
                     : "BLOCKED"
         );
 
-
         console.log(
             "Levels:",
             `${r?.levelsAvailable?.bids ?? 0} bids / ` +
             `${r?.levelsAvailable?.asks ?? 0} asks`
         );
 
-
         console.log(
             "Imbalance:",
             r?.imbalance ?? "--"
         );
-
 
         console.log(
             "Bid/Ask:",
             r?.bidAskRatio ?? "--"
         );
 
-
         console.log(
             "Ask/Bid:",
             r?.askBidRatio ?? "--"
         );
-
 
         console.log(
             "Imbalance test:",
@@ -1221,7 +916,6 @@ async function compareOrderBookDepths(
                     : "FAIL"
         );
 
-
         console.log(
             "Ratio test:",
             r?.available === false
@@ -1231,10 +925,7 @@ async function compareOrderBookDepths(
                     : "FAIL"
         );
 
-
-        if (
-            r?.error
-        ) {
+        if (r?.error) {
 
             console.log(
                 "Error:",
@@ -1242,7 +933,6 @@ async function compareOrderBookDepths(
             );
         }
     }
-
 
     console.log("");
 
@@ -1276,7 +966,6 @@ async function compareOrderBookDepths(
     console.log(
         "============================================================"
     );
-
 
     return result;
 }
@@ -1336,12 +1025,6 @@ function getOrderBookFilterConfig() {
 
 // ============================================================
 // MULTI-DEPTH COMPATIBILITY WRAPPER
-// ============================================================
-//
-// server_v3.js expects:
-//
-//     evaluateMultiDepth()
-//
 // ============================================================
 
 function evaluateMultiDepth(

@@ -41,15 +41,14 @@ const {
 } = require("../weex/weex");
 
 
+const {
+    processOrderFlowHistory
+} = require("../filters/orderFlowHistory");
+
+
 // ============================================================
 // SYMBOL LOCKS
 // ============================================================
-//
-// One lock per symbol.
-//
-// BTCUSDT can process independently from ETHUSDT.
-// But two simultaneous operations on BTCUSDT are blocked.
-//
 
 const symbolLocks =
     new Map();
@@ -111,38 +110,25 @@ function releaseTradingLock(symbol) {
 // ORDER BOOK ENTRY CONFIRMATION
 // ============================================================
 //
-// IMPORTANT:
+// OLD / MANUAL ENTRY FILTER
 //
-// This function is ONLY for new LONG / SHORT entries.
+// This is kept for normal processSignal() usage.
 //
-// CLOSE actions NEVER come here.
+// Automatic order-flow trading can skip this check because
+// orderFlowHistory.js already performed the complete decision.
 //
-// Four depths:
+// Current depths:
 //
 //     15
+//     20
 //     30
 //     60
-//     90
 //
 // Required:
 //
-//     3 of 4
+//     3 OF 4
 //
-// 3/4 = PASS
-// 4/4 = PASS
-// 2/4 = BLOCK
-// 1/4 = BLOCK
-// 0/4 = BLOCK
-//
-// Each depth itself requires:
-//
-//     imbalance test
-//     AND
-//     ratio test
-//
-// The actual order-book calculation is handled by
-// weex.js.
-//
+// ============================================================
 
 async function checkEntryOrderBook(
     symbol,
@@ -194,14 +180,14 @@ async function checkEntryOrderBook(
 
 
     // --------------------------------------------------------
-    // FOUR DEPTH CONFIRMATIONS
+    // CURRENT DEPTHS
     // --------------------------------------------------------
 
     const depths = [
         15,
+        20,
         30,
         60,
-        90,
     ];
 
 
@@ -240,6 +226,13 @@ async function checkEntryOrderBook(
     );
 
     console.log(
+        "20 Levels:",
+        result.depth20?.allowed
+            ? "PASS"
+            : "FAIL"
+    );
+
+    console.log(
         "30 Levels:",
         result.depth30?.allowed
             ? "PASS"
@@ -249,13 +242,6 @@ async function checkEntryOrderBook(
     console.log(
         "60 Levels:",
         result.depth60?.allowed
-            ? "PASS"
-            : "FAIL"
-    );
-
-    console.log(
-        "90 Levels:",
-        result.depth90?.allowed
             ? "PASS"
             : "FAIL"
     );
@@ -316,24 +302,24 @@ async function checkEntryOrderBook(
 // OPEN MARKET POSITION
 // ============================================================
 //
-// This function:
+// options.skipOrderBook = true
 //
-// 1. Checks fresh order book
-// 2. Requires 3/4
-// 3. Checks balance
-// 4. Gets price
-// 5. Calculates position size
-// 6. Ensures leverage
-// 7. Places market order
+// Used by the new 10-minute history system.
 //
-// IMPORTANT:
+// When false:
 //
-// This function should ONLY be called for a NEW entry.
+//     Fresh order-book check
 //
+// When true:
+//
+//     History already approved the trade
+//
+// ============================================================
 
 async function openMarketPosition(
     symbol,
-    direction
+    direction,
+    options = {}
 ) {
 
     if (
@@ -358,15 +344,59 @@ async function openMarketPosition(
 
 
     // ========================================================
-    // FRESH 3-OF-4 ORDER BOOK CHECK
+    // ORDER BOOK CHECK
     // ========================================================
 
-    const orderBookCheck =
-        await checkEntryOrderBook(
-            symbol,
-            direction
+    let orderBookCheck = {
+
+        allowed: true,
+
+        confirmationPassed: true,
+
+        confirmationCount: 4,
+
+        required:
+            ORDER_BOOK_CONFIRMATION_REQUIRED,
+
+        reason:
+            "ORDER_FLOW_HISTORY_CONFIRMED",
+
+    };
+
+
+    // --------------------------------------------------------
+    // NORMAL ENTRY
+    // --------------------------------------------------------
+
+    if (
+        !options.skipOrderBook
+    ) {
+
+        orderBookCheck =
+            await checkEntryOrderBook(
+                symbol,
+                direction
+            );
+
+    } else {
+
+        console.log("");
+
+        console.log(
+            `${symbol}: ORDER BOOK CHECK SKIPPED`
         );
 
+        console.log(
+            "Reason:",
+            "10-MINUTE ORDER FLOW HISTORY ALREADY CONFIRMED"
+        );
+
+    }
+
+
+    // ========================================================
+    // BLOCK
+    // ========================================================
 
     if (
         !orderBookCheck.allowed
@@ -379,7 +409,7 @@ async function openMarketPosition(
         );
 
         console.log(
-            "ORDER BLOCKED BY WEEX ORDER BOOK"
+            "ORDER BLOCKED"
         );
 
         console.log(
@@ -394,44 +424,6 @@ async function openMarketPosition(
         console.log(
             "Direction:",
             direction
-        );
-
-        console.log(
-            "15:",
-            orderBookCheck.depth15?.allowed
-                ? "PASS"
-                : "FAIL"
-        );
-
-        console.log(
-            "30:",
-            orderBookCheck.depth30?.allowed
-                ? "PASS"
-                : "FAIL"
-        );
-
-        console.log(
-            "60:",
-            orderBookCheck.depth60?.allowed
-                ? "PASS"
-                : "FAIL"
-        );
-
-        console.log(
-            "90:",
-            orderBookCheck.depth90?.allowed
-                ? "PASS"
-                : "FAIL"
-        );
-
-        console.log(
-            "Confirmation:",
-            `${orderBookCheck.confirmationCount}/4`
-        );
-
-        console.log(
-            "Required:",
-            `${ORDER_BOOK_CONFIRMATION_REQUIRED}/4`
         );
 
         console.log(
@@ -468,12 +460,11 @@ async function openMarketPosition(
     console.log("");
 
     console.log(
-        `${symbol}: ORDER BOOK PASSED`
+        `${symbol}: ENTRY CONFIRMED`
     );
 
     console.log(
-        `Direction ${direction} confirmed by ` +
-        `${orderBookCheck.confirmationCount}/4 depths.`
+        `Direction: ${direction}`
     );
 
 
@@ -587,8 +578,10 @@ async function openMarketPosition(
     );
 
     console.log(
-        "Order-book confirmation:",
-        `${orderBookCheck.confirmationCount}/4`
+        "Entry confirmation:",
+        options.skipOrderBook
+            ? "10-MINUTE HISTORY"
+            : `${orderBookCheck.confirmationCount}/4`
     );
 
 
@@ -637,68 +630,22 @@ async function openMarketPosition(
 // PROCESS SIGNAL
 // ============================================================
 //
-// LONG:
+// This remains the main execution function.
 //
-// FLAT
-//     -> FRESH 3/4 ORDER BOOK
-//     -> OPEN LONG
+// options.skipOrderBook:
 //
-// LONG
-//     -> NOTHING
+//     false = normal fresh order-book check
 //
-// SHORT
-//     -> CLOSE SHORT
-//     -> CONFIRM FLAT
-//     -> FRESH 3/4 ORDER BOOK
-//     -> OPEN LONG
-//
-// ------------------------------------------------------------
-//
-// SHORT:
-//
-// FLAT
-//     -> FRESH 3/4 ORDER BOOK
-//     -> OPEN SHORT
-//
-// SHORT
-//     -> NOTHING
-//
-// LONG
-//     -> CLOSE LONG
-//     -> CONFIRM FLAT
-//     -> FRESH 3/4 ORDER BOOK
-//     -> OPEN SHORT
-//
-// ------------------------------------------------------------
-//
-// CLOSE:
-//
-// LONG / SHORT
-//     -> CLOSE
+//     true = history system already approved the entry
 //
 // CLOSE is NEVER order-book filtered.
-//
-// ------------------------------------------------------------
-//
-// CLOSE_LONG:
-//
-// LONG -> CLOSE
-// SHORT -> NOTHING
-// FLAT -> NOTHING
-//
-// ------------------------------------------------------------
-//
-// CLOSE_SHORT:
-//
-// SHORT -> CLOSE
-// LONG -> NOTHING
-// FLAT -> NOTHING
 //
 // ============================================================
 
 async function processSignal(
     symbol,
-    action
+    action,
+    options = {}
 ) {
 
     symbol =
@@ -1044,24 +991,6 @@ async function processSignal(
         // ====================================================
         // REVERSAL
         // ====================================================
-        //
-        // IMPORTANT:
-        //
-        // DO NOT check order book before closing.
-        //
-        // First:
-        //
-        // CLOSE
-        // CONFIRM FLAT
-        //
-        // THEN:
-        //
-        // FRESH ORDER BOOK
-        // OPEN
-        //
-        // This prevents opening the new direction based on
-        // stale order-book data.
-        //
 
         if (
             current.direction !== "FLAT" &&
@@ -1137,34 +1066,40 @@ async function processSignal(
 
 
             // ------------------------------------------------
-            // FRESH ORDER BOOK
+            // OPEN NEW DIRECTION
             // ------------------------------------------------
 
             console.log("");
 
             console.log(
-                `${symbol}: REQUESTING FRESH ORDER BOOK FOR ${action}`
-            );
-
-            console.log(
-                "Confirmation:",
-                "15 / 30 / 60 / 90"
-            );
-
-            console.log(
-                "Required:",
-                `${ORDER_BOOK_CONFIRMATION_REQUIRED}/4`
+                `${symbol}: PREPARING NEW ${action}`
             );
 
 
-            // ------------------------------------------------
-            // OPEN NEW DIRECTION
-            // ------------------------------------------------
+            if (
+                options.skipOrderBook
+            ) {
+
+                console.log(
+                    "Entry confirmation:",
+                    "10-MINUTE ORDER FLOW HISTORY"
+                );
+
+            } else {
+
+                console.log(
+                    "Entry confirmation:",
+                    "FRESH 15 / 20 / 30 / 60"
+                );
+
+            }
+
 
             const openResult =
                 await openMarketPosition(
                     symbol,
-                    action
+                    action,
+                    options
                 );
 
 
@@ -1179,7 +1114,7 @@ async function processSignal(
                 console.log("");
 
                 console.log(
-                    `${symbol}: REVERSAL OPEN BLOCKED BY ORDER BOOK`
+                    `${symbol}: REVERSAL OPEN BLOCKED`
                 );
 
                 console.log(
@@ -1274,15 +1209,29 @@ async function processSignal(
             `${symbol}: FLAT -> ${action}`
         );
 
-        console.log(
-            "Running fresh 3-of-4 order-book confirmation..."
-        );
+
+        if (
+            options.skipOrderBook
+        ) {
+
+            console.log(
+                "Using 10-minute order-flow history."
+            );
+
+        } else {
+
+            console.log(
+                "Running fresh 3-of-4 order-book confirmation."
+            );
+
+        }
 
 
         const openResult =
             await openMarketPosition(
                 symbol,
-                action
+                action,
+                options
             );
 
 
@@ -1297,7 +1246,7 @@ async function processSignal(
             console.log("");
 
             console.log(
-                `${symbol}: ENTRY BLOCKED BY ORDER BOOK`
+                `${symbol}: ENTRY BLOCKED`
             );
 
             console.log(
@@ -1392,6 +1341,205 @@ async function processSignal(
 
 
 // ============================================================
+// AUTOMATIC ORDER-FLOW TRADING
+// ============================================================
+//
+// New system:
+//
+//     200 LEVEL
+//          +
+//     15 / 20 / 30 / 60
+//          +
+//     10 MIN HISTORY
+//          ↓
+//     FINAL DECISION
+//
+// No TradingView.
+//
+// No second order-book check.
+//
+// ============================================================
+
+async function processAutomaticOrderFlow(
+    symbol,
+    orderBookResult
+) {
+
+    symbol =
+        normalizeSymbol(
+            symbol
+        );
+
+
+    // --------------------------------------------------------
+    // CREATE / UPDATE HISTORY
+    // --------------------------------------------------------
+
+    const decision =
+        processOrderFlowHistory(
+            symbol,
+            orderBookResult
+        );
+
+
+    // --------------------------------------------------------
+    // DISPLAY
+    // --------------------------------------------------------
+
+    console.log("");
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        `ORDER FLOW HISTORY: ${symbol}`
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "CURRENT 200 TREND:",
+        decision.current.trend200
+    );
+
+    console.log(
+        "CURRENT TRIGGER:",
+        decision.current.trigger
+    );
+
+    console.log(
+        "TREND HISTORY:",
+        `${decision.trend200.longCount} LONG / ` +
+        `${decision.trend200.shortCount} SHORT / ` +
+        `${decision.trend200.neutralCount} NEUTRAL`
+    );
+
+    console.log(
+        "TREND LONG:",
+        `${decision.trend200.longPercent}%`
+    );
+
+    console.log(
+        "TREND SHORT:",
+        `${decision.trend200.shortPercent}%`
+    );
+
+    console.log(
+        "TRIGGER HISTORY:",
+        `${decision.triggerHistory.longCount} LONG / ` +
+        `${decision.triggerHistory.shortCount} SHORT / ` +
+        `${decision.triggerHistory.neutralCount} NEUTRAL`
+    );
+
+    console.log(
+        "TRIGGER LONG:",
+        `${decision.triggerHistory.longPercent}%`
+    );
+
+    console.log(
+        "TRIGGER SHORT:",
+        `${decision.triggerHistory.shortPercent}%`
+    );
+
+    console.log(
+        "HISTORY:",
+        `${decision.history.snapshots}/10`
+    );
+
+    console.log(
+        "FINAL DECISION:",
+        decision.decision
+    );
+
+    console.log(
+        "REASON:",
+        decision.reason
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+
+    // --------------------------------------------------------
+    // NEUTRAL
+    // --------------------------------------------------------
+
+    if (
+        decision.decision === "NEUTRAL"
+    ) {
+
+        console.log(
+            `${symbol}: NEUTRAL - NO TRADE`
+        );
+
+
+        return {
+
+            success: true,
+
+            symbol,
+
+            action:
+                "NEUTRAL",
+
+            traded:
+                false,
+
+            decision,
+
+        };
+
+    }
+
+
+    // --------------------------------------------------------
+    // PROCESS REAL TRADE
+    //
+    // IMPORTANT:
+    //
+    // skipOrderBook = true
+    //
+    // Because the history system already checked the
+    // order book.
+    // --------------------------------------------------------
+
+    const result =
+        await processSignal(
+            symbol,
+            decision.decision,
+            {
+                skipOrderBook: true
+            }
+        );
+
+
+    return {
+
+        success:
+            result.success,
+
+        symbol,
+
+        action:
+            result.action,
+
+        traded:
+            result.success === true,
+
+        decision,
+
+        result,
+
+    };
+
+}
+
+
+// ============================================================
 // STATUS CONFIG
 // ============================================================
 
@@ -1425,9 +1573,9 @@ function getStatusConfig() {
 
             confirmationDepths: [
                 15,
+                20,
                 30,
                 60,
-                90,
             ],
 
             longMinImbalance:
@@ -1444,6 +1592,31 @@ function getStatusConfig() {
 
         },
 
+        orderFlowHistory: {
+
+            enabled: true,
+
+            windowMinutes: 10,
+
+            collectionIntervalMinutes: 1,
+
+            trendMinPercent: 70,
+
+            triggerMinPercent: 60,
+
+            minimumSnapshots: 5,
+
+            confirmationDepths: [
+                15,
+                20,
+                30,
+                60,
+            ],
+
+            confirmationRequired: 3,
+
+        },
+
     };
 
 }
@@ -1456,6 +1629,8 @@ function getStatusConfig() {
 module.exports = {
 
     processSignal,
+
+    processAutomaticOrderFlow,
 
     checkEntryOrderBook,
 

@@ -3,463 +3,333 @@ const {
     DEFAULT_MARGIN,
     DEFAULT_LEVERAGE,
     REQUIRED_MARGIN_MODE,
+
+    ORDER_BOOK_FILTER_ENABLED,
     ORDER_BOOK_DEPTH,
+
     LONG_MIN_IMBALANCE,
     SHORT_MAX_IMBALANCE,
+
     MIN_BID_ASK_RATIO,
     MIN_ASK_BID_RATIO,
-    AUTO_TRADING_ENABLED,
-    AUTO_TRADING_MAX_TRADES_PER_CYCLE,
-    AUTO_TRADING_SYMBOL_DELAY_MS,
-    MAX_OPEN_POSITIONS
+
+    ORDER_BOOK_CONFIRMATION_REQUIRED,
 } = require("../config/config");
 
-const weex =
-    require("../weex/weex");
 
 const {
-    checkOrderBook
-} = require("../filters/orderBook");
+    SUPPORTED_SYMBOLS,
 
-const {
     normalizeSymbol,
     getSymbolSettings,
     getContract,
+
     getFuturesBalance,
     getPrice,
+
     getCurrentPosition,
+
     ensureLeverage,
     calculatePosition,
     printPosition,
+
     placeOpenOrder,
     closePosition,
     waitForPosition,
-    getOrderBook,
-    SUPPORTED_SYMBOLS
-} = weex;
+
+    checkMultiDepthOrderBookSupport,
+} = require("../weex/weex");
 
 
 // ============================================================
-// ORDER FLOW STATISTICS
+// SYMBOL LOCKS
 // ============================================================
-
-const orderBookStats = {
-    total: 0,
-    accepted: 0,
-    rejected: 0,
-
-    long: {
-        checked: 0,
-        accepted: 0,
-        rejected: 0
-    },
-
-    short: {
-        checked: 0,
-        accepted: 0,
-        rejected: 0
-    },
-
-    reasons: {},
-    symbols: {}
-};
-
-
-// ============================================================
-// RECORD ORDER BOOK RESULT
-// ============================================================
-
-function recordOrderBookResult(
-    symbol,
-    direction,
-    result
-) {
-
-    if (
-        direction !== "LONG" &&
-        direction !== "SHORT"
-    ) {
-        return;
-    }
-
-    symbol =
-        normalizeSymbol(symbol);
-
-    orderBookStats.total++;
-
-    const side =
-        direction.toLowerCase();
-
-    orderBookStats[side].checked++;
-
-
-    // --------------------------------------------------------
-    // CREATE SYMBOL STATISTICS
-    // --------------------------------------------------------
-
-    if (
-        !orderBookStats.symbols[symbol]
-    ) {
-
-        orderBookStats.symbols[symbol] = {
-
-            total: 0,
-            accepted: 0,
-            rejected: 0,
-
-            long: {
-                checked: 0,
-                accepted: 0,
-                rejected: 0
-            },
-
-            short: {
-                checked: 0,
-                accepted: 0,
-                rejected: 0
-            },
-
-            reasons: {}
-        };
-    }
-
-
-    const symbolStats =
-        orderBookStats.symbols[symbol];
-
-
-    symbolStats.total++;
-    symbolStats[side].checked++;
-
-
-    // --------------------------------------------------------
-    // ACCEPTED
-    // --------------------------------------------------------
-
-    if (
-        result &&
-        result.allowed
-    ) {
-
-        orderBookStats.accepted++;
-
-        orderBookStats[side].accepted++;
-
-        symbolStats.accepted++;
-
-        symbolStats[side].accepted++;
-
-        return;
-    }
-
-
-    // --------------------------------------------------------
-    // REJECTED
-    // --------------------------------------------------------
-
-    orderBookStats.rejected++;
-
-    orderBookStats[side].rejected++;
-
-    symbolStats.rejected++;
-
-    symbolStats[side].rejected++;
-
-
-    const reason =
-        result &&
-        result.reason
-            ? result.reason
-            : "UNKNOWN";
-
-
-    orderBookStats.reasons[reason] =
-        (
-            orderBookStats.reasons[reason] ||
-            0
-        ) + 1;
-
-
-    symbolStats.reasons[reason] =
-        (
-            symbolStats.reasons[reason] ||
-            0
-        ) + 1;
-}
-
-
-// ============================================================
-// ORDER FLOW STATISTICS GETTER
-// ============================================================
-
-function getOrderBookStats() {
-
-    const total =
-        orderBookStats.total;
-
-
-    const acceptanceRate =
-        total > 0
-            ? (
-                orderBookStats.accepted /
-                total
-            ) * 100
-            : 0;
-
-
-    const rejectionRate =
-        total > 0
-            ? (
-                orderBookStats.rejected /
-                total
-            ) * 100
-            : 0;
-
-
-    const symbols = {};
-
-
-    for (
-        const symbol of Object.keys(
-            orderBookStats.symbols
-        )
-    ) {
-
-        const data =
-            orderBookStats.symbols[symbol];
-
-
-        const symbolAcceptanceRate =
-            data.total > 0
-                ? (
-                    data.accepted /
-                    data.total
-                ) * 100
-                : 0;
-
-
-        const symbolRejectionRate =
-            data.total > 0
-                ? (
-                    data.rejected /
-                    data.total
-                ) * 100
-                : 0;
-
-
-        symbols[symbol] = {
-
-            ...data,
-
-            acceptanceRate:
-                Number(
-                    symbolAcceptanceRate.toFixed(2)
-                ),
-
-            rejectionRate:
-                Number(
-                    symbolRejectionRate.toFixed(2)
-                ),
-
-            reasons: {
-                ...data.reasons
-            }
-        };
-    }
-
-
-    return {
-
-        total,
-
-        accepted:
-            orderBookStats.accepted,
-
-        rejected:
-            orderBookStats.rejected,
-
-        acceptanceRate:
-            Number(
-                acceptanceRate.toFixed(2)
-            ),
-
-        rejectionRate:
-            Number(
-                rejectionRate.toFixed(2)
-            ),
-
-        long: {
-            ...orderBookStats.long
-        },
-
-        short: {
-            ...orderBookStats.short
-        },
-
-        reasons: {
-            ...orderBookStats.reasons
-        },
-
-        symbols
-    };
-}
-
-
-// ============================================================
-// RESET ORDER FLOW STATISTICS
-// ============================================================
-
-function resetOrderBookStats() {
-
-    orderBookStats.total = 0;
-
-    orderBookStats.accepted = 0;
-
-    orderBookStats.rejected = 0;
-
-
-    orderBookStats.long = {
-        checked: 0,
-        accepted: 0,
-        rejected: 0
-    };
-
-
-    orderBookStats.short = {
-        checked: 0,
-        accepted: 0,
-        rejected: 0
-    };
-
-
-    orderBookStats.reasons = {};
-
-    orderBookStats.symbols = {};
-}
-
-
-// ============================================================
-// PER SYMBOL LOCKS
-// ============================================================
+//
+// One lock per symbol.
+//
+// BTCUSDT can process independently from ETHUSDT.
+// But two simultaneous operations on BTCUSDT are blocked.
+//
 
 const symbolLocks =
     new Map();
 
 
+// ============================================================
+// SLEEP
+// ============================================================
+
 function sleep(ms) {
 
     return new Promise(
         resolve =>
-            setTimeout(
-                resolve,
-                ms
-            )
+            setTimeout(resolve, ms)
     );
+
 }
 
 
-async function acquireTradingLock(
-    symbol
-) {
+// ============================================================
+// ACQUIRE TRADING LOCK
+// ============================================================
+
+async function acquireTradingLock(symbol) {
 
     symbol =
         normalizeSymbol(symbol);
-
 
     while (
         symbolLocks.get(symbol)
     ) {
 
         await sleep(25);
-    }
 
+    }
 
     symbolLocks.set(
         symbol,
         true
     );
+
 }
 
 
-function releaseTradingLock(
-    symbol
-) {
+// ============================================================
+// RELEASE TRADING LOCK
+// ============================================================
+
+function releaseTradingLock(symbol) {
 
     symbolLocks.delete(
         normalizeSymbol(symbol)
     );
+
 }
 
 
 // ============================================================
-// CHECK MAX OPEN POSITIONS
+// ORDER BOOK ENTRY CONFIRMATION
 // ============================================================
+//
+// IMPORTANT:
+//
+// This function is ONLY for new LONG / SHORT entries.
+//
+// CLOSE actions NEVER come here.
+//
+// Four depths:
+//
+//     15
+//     30
+//     60
+//     90
+//
+// Required:
+//
+//     3 of 4
+//
+// 3/4 = PASS
+// 4/4 = PASS
+// 2/4 = BLOCK
+// 1/4 = BLOCK
+// 0/4 = BLOCK
+//
+// Each depth itself requires:
+//
+//     imbalance test
+//     AND
+//     ratio test
+//
+// The actual order-book calculation is handled by
+// weex.js.
+//
 
-async function getOpenPositionCount() {
+async function checkEntryOrderBook(
+    symbol,
+    direction
+) {
 
     if (
-        !Number.isFinite(
-            Number(MAX_OPEN_POSITIONS)
-        )
+        direction !== "LONG" &&
+        direction !== "SHORT"
     ) {
-        return null;
+
+        throw new Error(
+            `Invalid entry direction: ${direction}`
+        );
+
     }
 
 
+    // --------------------------------------------------------
+    // FILTER DISABLED
+    // --------------------------------------------------------
+
     if (
-        Number(MAX_OPEN_POSITIONS) <= 0
+        !ORDER_BOOK_FILTER_ENABLED
     ) {
-        return null;
+
+        console.log("");
+        console.log(
+            `${symbol}: ORDER BOOK FILTER DISABLED`
+        );
+
+        return {
+
+            allowed: true,
+
+            confirmationPassed: true,
+
+            confirmationCount: 4,
+
+            required:
+                ORDER_BOOK_CONFIRMATION_REQUIRED,
+
+            reason:
+                "ORDER_BOOK_FILTER_DISABLED",
+
+        };
+
     }
 
 
-    let count = 0;
+    // --------------------------------------------------------
+    // FOUR DEPTH CONFIRMATIONS
+    // --------------------------------------------------------
+
+    const depths = [
+        15,
+        30,
+        60,
+        90,
+    ];
 
 
-    const symbols =
-        Array.from(
-            SUPPORTED_SYMBOLS || []
+    const result =
+        await checkMultiDepthOrderBookSupport(
+            symbol,
+            direction,
+            depths
         );
 
 
-    for (
-        const symbol of symbols
+    // --------------------------------------------------------
+    // DISPLAY RESULT
+    // --------------------------------------------------------
+
+    console.log("");
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        `ORDER BOOK ENTRY CONFIRMATION: ${symbol}`
+    );
+
+    console.log(
+        "Direction:",
+        direction
+    );
+
+    console.log(
+        "15 Levels:",
+        result.depth15?.allowed
+            ? "PASS"
+            : "FAIL"
+    );
+
+    console.log(
+        "30 Levels:",
+        result.depth30?.allowed
+            ? "PASS"
+            : "FAIL"
+    );
+
+    console.log(
+        "60 Levels:",
+        result.depth60?.allowed
+            ? "PASS"
+            : "FAIL"
+    );
+
+    console.log(
+        "90 Levels:",
+        result.depth90?.allowed
+            ? "PASS"
+            : "FAIL"
+    );
+
+    console.log(
+        "CONFIRMATIONS:",
+        `${result.confirmationCount}/4`
+    );
+
+    console.log(
+        "REQUIRED:",
+        `${ORDER_BOOK_CONFIRMATION_REQUIRED}/4`
+    );
+
+    console.log(
+        "ENTRY:",
+        result.confirmationPassed
+            ? "ALLOWED"
+            : "BLOCKED"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+
+    // --------------------------------------------------------
+    // BLOCK
+    // --------------------------------------------------------
+
+    if (
+        !result.confirmationPassed
     ) {
 
-        try {
+        console.log("");
 
-            const position =
-                await getCurrentPosition(
-                    symbol
-                );
+        console.log(
+            `ENTRY BLOCKED: ${symbol} ${direction}`
+        );
 
+        console.log(
+            `Order book confirmation: ${result.confirmationCount}/4`
+        );
 
-            if (
-                position &&
-                position.direction &&
-                position.direction !== "FLAT"
-            ) {
+        console.log(
+            `Required confirmation: ${ORDER_BOOK_CONFIRMATION_REQUIRED}/4`
+        );
 
-                count++;
-            }
-
-        } catch (error) {
-
-            console.error(
-                `POSITION COUNT ERROR ${symbol}:`,
-                error.message
-            );
-        }
     }
 
 
-    return count;
+    return result;
+
 }
 
 
 // ============================================================
 // OPEN MARKET POSITION
 // ============================================================
+//
+// This function:
+//
+// 1. Checks fresh order book
+// 2. Requires 3/4
+// 3. Checks balance
+// 4. Gets price
+// 5. Calculates position size
+// 6. Ensures leverage
+// 7. Places market order
+//
+// IMPORTANT:
+//
+// This function should ONLY be called for a NEW entry.
+//
 
 async function openMarketPosition(
     symbol,
@@ -474,6 +344,7 @@ async function openMarketPosition(
         throw new Error(
             `Invalid direction: ${direction}`
         );
+
     }
 
 
@@ -486,77 +357,18 @@ async function openMarketPosition(
     );
 
 
-    // --------------------------------------------------------
-    // FRESH ORDER BOOK
-    // --------------------------------------------------------
+    // ========================================================
+    // FRESH 3-OF-4 ORDER BOOK CHECK
+    // ========================================================
 
-    let orderBookCheck;
-
-
-    try {
-
-        orderBookCheck =
-            await checkOrderBook(
-                symbol,
-                direction,
-                getOrderBook
-            );
-
-    } catch (error) {
-
-        console.error("");
-
-        console.error(
-            "ORDER BOOK CHECK ERROR"
-        );
-
-        console.error(
-            "Symbol:",
-            symbol
-        );
-
-        console.error(
-            "Direction:",
+    const orderBookCheck =
+        await checkEntryOrderBook(
+            symbol,
             direction
         );
 
-        console.error(
-            error.message
-        );
-
-
-        return {
-
-            success: false,
-
-            blocked: true,
-
-            reason:
-                "ORDER_BOOK_ERROR",
-
-            error:
-                error.message
-        };
-    }
-
-
-    // --------------------------------------------------------
-    // RECORD ORDER FLOW RESULT
-    // --------------------------------------------------------
-
-    recordOrderBookResult(
-        symbol,
-        direction,
-        orderBookCheck
-    );
-
-
-    // --------------------------------------------------------
-    // BLOCKED
-    // --------------------------------------------------------
 
     if (
-        !orderBookCheck ||
         !orderBookCheck.allowed
     ) {
 
@@ -585,29 +397,46 @@ async function openMarketPosition(
         );
 
         console.log(
+            "15:",
+            orderBookCheck.depth15?.allowed
+                ? "PASS"
+                : "FAIL"
+        );
+
+        console.log(
+            "30:",
+            orderBookCheck.depth30?.allowed
+                ? "PASS"
+                : "FAIL"
+        );
+
+        console.log(
+            "60:",
+            orderBookCheck.depth60?.allowed
+                ? "PASS"
+                : "FAIL"
+        );
+
+        console.log(
+            "90:",
+            orderBookCheck.depth90?.allowed
+                ? "PASS"
+                : "FAIL"
+        );
+
+        console.log(
+            "Confirmation:",
+            `${orderBookCheck.confirmationCount}/4`
+        );
+
+        console.log(
+            "Required:",
+            `${ORDER_BOOK_CONFIRMATION_REQUIRED}/4`
+        );
+
+        console.log(
             "Reason:",
-            orderBookCheck &&
             orderBookCheck.reason
-                ? orderBookCheck.reason
-                : "ORDER_BOOK_REJECTED"
-        );
-
-        console.log(
-            "Imbalance:",
-            orderBookCheck &&
-            orderBookCheck.imbalance
-        );
-
-        console.log(
-            "Bid liquidity:",
-            orderBookCheck &&
-            orderBookCheck.bidLiquidity
-        );
-
-        console.log(
-            "Ask liquidity:",
-            orderBookCheck &&
-            orderBookCheck.askLiquidity
         );
 
         console.log(
@@ -622,20 +451,19 @@ async function openMarketPosition(
             blocked: true,
 
             reason:
-                orderBookCheck &&
-                orderBookCheck.reason
-                    ? orderBookCheck.reason
-                    : "ORDER_BOOK_REJECTED",
+                "ORDER_BOOK_3_OF_4_NOT_CONFIRMED",
 
             orderBook:
-                orderBookCheck
+                orderBookCheck,
+
         };
+
     }
 
 
-    // --------------------------------------------------------
-    // PASSED
-    // --------------------------------------------------------
+    // ========================================================
+    // ORDER BOOK PASSED
+    // ========================================================
 
     console.log("");
 
@@ -644,34 +472,22 @@ async function openMarketPosition(
     );
 
     console.log(
-        `Direction ${direction} is supported by WEEX order book.`
+        `Direction ${direction} confirmed by ` +
+        `${orderBookCheck.confirmationCount}/4 depths.`
     );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // BALANCE
-    // --------------------------------------------------------
+    // ========================================================
 
     const balance =
         await getFuturesBalance();
 
 
     if (
-        !balance ||
-        !Number.isFinite(
-            Number(balance.available)
-        )
-    ) {
-
-        throw new Error(
-            `${symbol}: invalid futures balance response.`
-        );
-    }
-
-
-    if (
-        Number(balance.available) <
-        Number(DEFAULT_MARGIN)
+        balance.available <
+        DEFAULT_MARGIN
     ) {
 
         throw new Error(
@@ -679,12 +495,13 @@ async function openMarketPosition(
             `Available ${balance.available} USDT, ` +
             `required approximately ${DEFAULT_MARGIN} USDT`
         );
+
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // PRICE
-    // --------------------------------------------------------
+    // ========================================================
 
     const price =
         await getPrice(
@@ -692,40 +509,15 @@ async function openMarketPosition(
         );
 
 
-    if (
-        !Number.isFinite(
-            Number(price)
-        ) ||
-        Number(price) <= 0
-    ) {
-
-        throw new Error(
-            `${symbol}: invalid market price: ${price}`
-        );
-    }
-
-
-    // --------------------------------------------------------
-    // POSITION CALCULATION
-    // --------------------------------------------------------
+    // ========================================================
+    // POSITION SIZE
+    // ========================================================
 
     const calculation =
         calculatePosition(
             symbol,
             price
         );
-
-
-    if (
-        !calculation ||
-        !calculation.quantity ||
-        Number(calculation.quantity) <= 0
-    ) {
-
-        throw new Error(
-            `${symbol}: invalid position calculation.`
-        );
-    }
 
 
     printPosition(
@@ -735,18 +527,18 @@ async function openMarketPosition(
     );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // LEVERAGE
-    // --------------------------------------------------------
+    // ========================================================
 
     await ensureLeverage(
         symbol
     );
 
 
-    // --------------------------------------------------------
-    // OPEN ORDER
-    // --------------------------------------------------------
+    // ========================================================
+    // OPEN MARKET ORDER
+    // ========================================================
 
     console.log("");
 
@@ -794,6 +586,11 @@ async function openMarketPosition(
         getContract(symbol).stepSize
     );
 
+    console.log(
+        "Order-book confirmation:",
+        `${orderBookCheck.confirmationCount}/4`
+    );
+
 
     const result =
         await placeOpenOrder(
@@ -829,13 +626,74 @@ async function openMarketPosition(
         calculation,
 
         orderBook:
-            orderBookCheck
+            orderBookCheck,
+
     };
+
 }
 
 
 // ============================================================
 // PROCESS SIGNAL
+// ============================================================
+//
+// LONG:
+//
+// FLAT
+//     -> FRESH 3/4 ORDER BOOK
+//     -> OPEN LONG
+//
+// LONG
+//     -> NOTHING
+//
+// SHORT
+//     -> CLOSE SHORT
+//     -> CONFIRM FLAT
+//     -> FRESH 3/4 ORDER BOOK
+//     -> OPEN LONG
+//
+// ------------------------------------------------------------
+//
+// SHORT:
+//
+// FLAT
+//     -> FRESH 3/4 ORDER BOOK
+//     -> OPEN SHORT
+//
+// SHORT
+//     -> NOTHING
+//
+// LONG
+//     -> CLOSE LONG
+//     -> CONFIRM FLAT
+//     -> FRESH 3/4 ORDER BOOK
+//     -> OPEN SHORT
+//
+// ------------------------------------------------------------
+//
+// CLOSE:
+//
+// LONG / SHORT
+//     -> CLOSE
+//
+// CLOSE is NEVER order-book filtered.
+//
+// ------------------------------------------------------------
+//
+// CLOSE_LONG:
+//
+// LONG -> CLOSE
+// SHORT -> NOTHING
+// FLAT -> NOTHING
+//
+// ------------------------------------------------------------
+//
+// CLOSE_SHORT:
+//
+// SHORT -> CLOSE
+// LONG -> NOTHING
+// FLAT -> NOTHING
+//
 // ============================================================
 
 async function processSignal(
@@ -862,26 +720,30 @@ async function processSignal(
     );
 
 
-    const validActions = [
-        "LONG",
-        "SHORT",
-        "CLOSE",
-        "CLOSE_LONG",
-        "CLOSE_SHORT"
-    ];
-
+    // ========================================================
+    // VALID ACTION
+    // ========================================================
 
     if (
-        !validActions.includes(
-            action
-        )
+        ![
+            "LONG",
+            "SHORT",
+            "CLOSE",
+            "CLOSE_LONG",
+            "CLOSE_SHORT",
+        ].includes(action)
     ) {
 
         throw new Error(
             "Action must be LONG, SHORT, CLOSE, CLOSE_LONG or CLOSE_SHORT."
         );
+
     }
 
+
+    // ========================================================
+    // TRADING SWITCH
+    // ========================================================
 
     if (
         !TRADING_ENABLED
@@ -901,14 +763,16 @@ async function processSignal(
 
             symbol,
 
-            action
+            action,
+
         };
+
     }
 
 
-    // --------------------------------------------------------
-    // LOCK
-    // --------------------------------------------------------
+    // ========================================================
+    // PER-SYMBOL LOCK
+    // ========================================================
 
     await acquireTradingLock(
         symbol
@@ -947,9 +811,9 @@ async function processSignal(
         );
 
 
-        // ----------------------------------------------------
-        // LIVE POSITION
-        // ----------------------------------------------------
+        // ====================================================
+        // ALWAYS READ LIVE WEEX POSITION
+        // ====================================================
 
         const current =
             await getCurrentPosition(
@@ -957,8 +821,16 @@ async function processSignal(
             );
 
 
+        console.log("");
+
+        console.log(
+            `${symbol}: LIVE POSITION =`,
+            current.direction
+        );
+
+
         // ====================================================
-        // CLOSE
+        // CLOSE / CLOSE_LONG / CLOSE_SHORT
         // ====================================================
 
         if (
@@ -966,6 +838,11 @@ async function processSignal(
             action === "CLOSE_LONG" ||
             action === "CLOSE_SHORT"
         ) {
+
+
+            // ------------------------------------------------
+            // ALREADY FLAT
+            // ------------------------------------------------
 
             if (
                 current.direction === "FLAT"
@@ -983,15 +860,27 @@ async function processSignal(
                     symbol,
 
                     action:
-                        "ALREADY_FLAT"
+                        "ALREADY_FLAT",
+
                 };
+
             }
 
+
+            // ------------------------------------------------
+            // CLOSE_LONG SAFETY CHECK
+            // ------------------------------------------------
 
             if (
                 action === "CLOSE_LONG" &&
                 current.direction !== "LONG"
             ) {
+
+                console.log(
+                    `${symbol}: CLOSE_LONG received but current ` +
+                    `position is ${current.direction}. No action.`
+                );
+
 
                 return {
 
@@ -1006,15 +895,27 @@ async function processSignal(
                         `CLOSE_LONG_RECEIVED_BUT_POSITION_IS_${current.direction}`,
 
                     position:
-                        current
+                        current,
+
                 };
+
             }
 
+
+            // ------------------------------------------------
+            // CLOSE_SHORT SAFETY CHECK
+            // ------------------------------------------------
 
             if (
                 action === "CLOSE_SHORT" &&
                 current.direction !== "SHORT"
             ) {
+
+                console.log(
+                    `${symbol}: CLOSE_SHORT received but current ` +
+                    `position is ${current.direction}. No action.`
+                );
+
 
                 return {
 
@@ -1029,10 +930,16 @@ async function processSignal(
                         `CLOSE_SHORT_RECEIVED_BUT_POSITION_IS_${current.direction}`,
 
                     position:
-                        current
+                        current,
+
                 };
+
             }
 
+
+            // ------------------------------------------------
+            // CLOSE
+            // ------------------------------------------------
 
             console.log("");
 
@@ -1052,6 +959,10 @@ async function processSignal(
                 );
 
 
+            // ------------------------------------------------
+            // CONFIRM FLAT
+            // ------------------------------------------------
+
             const flat =
                 await waitForPosition(
                     symbol,
@@ -1059,12 +970,20 @@ async function processSignal(
                 );
 
 
-            if (!flat) {
+            if (
+                !flat
+            ) {
 
                 throw new Error(
                     `${symbol}: WEEX did not confirm position closed.`
                 );
+
             }
+
+
+            console.log(
+                `${symbol}: CLOSE CONFIRMED`
+            );
 
 
             return {
@@ -1081,8 +1000,10 @@ async function processSignal(
                             : "CLOSED",
 
                 result:
-                    closeResult
+                    closeResult,
+
             };
+
         }
 
 
@@ -1113,14 +1034,34 @@ async function processSignal(
                     `ALREADY_${action}`,
 
                 position:
-                    current
+                    current,
+
             };
+
         }
 
 
         // ====================================================
         // REVERSAL
         // ====================================================
+        //
+        // IMPORTANT:
+        //
+        // DO NOT check order book before closing.
+        //
+        // First:
+        //
+        // CLOSE
+        // CONFIRM FLAT
+        //
+        // THEN:
+        //
+        // FRESH ORDER BOOK
+        // OPEN
+        //
+        // This prevents opening the new direction based on
+        // stale order-book data.
+        //
 
         if (
             current.direction !== "FLAT" &&
@@ -1145,8 +1086,20 @@ async function processSignal(
 
 
             // ------------------------------------------------
-            // CLOSE OLD POSITION FIRST
+            // CLOSE OLD POSITION
             // ------------------------------------------------
+
+            console.log("");
+
+            console.log(
+                `${symbol}: CLOSING OLD POSITION`
+            );
+
+            console.log(
+                "Order book filter:",
+                "NOT APPLIED"
+            );
+
 
             const closeResult =
                 await closePosition(
@@ -1165,11 +1118,14 @@ async function processSignal(
                 );
 
 
-            if (!flat) {
+            if (
+                !flat
+            ) {
 
                 throw new Error(
                     `${symbol}: old position did not close.`
                 );
+
             }
 
 
@@ -1179,13 +1135,30 @@ async function processSignal(
                 `${symbol}: OLD POSITION CLOSED`
             );
 
+
+            // ------------------------------------------------
+            // FRESH ORDER BOOK
+            // ------------------------------------------------
+
+            console.log("");
+
             console.log(
                 `${symbol}: REQUESTING FRESH ORDER BOOK FOR ${action}`
             );
 
+            console.log(
+                "Confirmation:",
+                "15 / 30 / 60 / 90"
+            );
+
+            console.log(
+                "Required:",
+                `${ORDER_BOOK_CONFIRMATION_REQUIRED}/4`
+            );
+
 
             // ------------------------------------------------
-            // FRESH ORDER BOOK + OPEN
+            // OPEN NEW DIRECTION
             // ------------------------------------------------
 
             const openResult =
@@ -1196,7 +1169,7 @@ async function processSignal(
 
 
             // ------------------------------------------------
-            // REVERSAL ENTRY BLOCKED
+            // NEW ENTRY BLOCKED
             // ------------------------------------------------
 
             if (
@@ -1223,12 +1196,17 @@ async function processSignal(
                     action:
                         `REVERSAL_TO_${action}_BLOCKED`,
 
+                    reason:
+                        openResult.reason,
+
                     close:
                         closeResult,
 
                     open:
-                        openResult
+                        openResult,
+
                 };
+
             }
 
 
@@ -1243,12 +1221,22 @@ async function processSignal(
                 );
 
 
-            if (!verified) {
+            if (
+                !verified
+            ) {
 
                 throw new Error(
                     `${symbol}: WEEX did not confirm ${action} after reversal.`
                 );
+
             }
+
+
+            console.log("");
+
+            console.log(
+                `${symbol}: REVERSAL CONFIRMED`
+            );
 
 
             return {
@@ -1269,14 +1257,27 @@ async function processSignal(
                 position:
                     await getCurrentPosition(
                         symbol
-                    )
+                    ),
+
             };
+
         }
 
 
         // ====================================================
-        // FLAT -> OPEN
+        // FLAT -> NEW ENTRY
         // ====================================================
+
+        console.log("");
+
+        console.log(
+            `${symbol}: FLAT -> ${action}`
+        );
+
+        console.log(
+            "Running fresh 3-of-4 order-book confirmation..."
+        );
+
 
         const openResult =
             await openMarketPosition(
@@ -1285,9 +1286,9 @@ async function processSignal(
             );
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // ENTRY BLOCKED
-        // ----------------------------------------------------
+        // ====================================================
 
         if (
             openResult.blocked
@@ -1323,14 +1324,16 @@ async function processSignal(
                     openResult.reason,
 
                 orderBook:
-                    openResult.orderBook
+                    openResult.orderBook,
+
             };
+
         }
 
 
-        // ----------------------------------------------------
-        // CONFIRM ENTRY
-        // ----------------------------------------------------
+        // ====================================================
+        // CONFIRM OPEN POSITION
+        // ====================================================
 
         const verified =
             await waitForPosition(
@@ -1339,12 +1342,22 @@ async function processSignal(
             );
 
 
-        if (!verified) {
+        if (
+            !verified
+        ) {
 
             throw new Error(
                 `${symbol}: WEEX did not confirm ${action} after opening.`
             );
+
         }
+
+
+        console.log("");
+
+        console.log(
+            `${symbol}: ${action} OPEN CONFIRMED`
+        );
 
 
         return {
@@ -1362,7 +1375,8 @@ async function processSignal(
             position:
                 await getCurrentPosition(
                     symbol
-                )
+                ),
+
         };
 
 
@@ -1371,898 +1385,14 @@ async function processSignal(
         releaseTradingLock(
             symbol
         );
+
     }
+
 }
 
 
 // ============================================================
-// AUTOMATIC ORDER-FLOW TRADER
-// ============================================================
-//
-// Every automatic cycle:
-//
-// 1. Scan every discovered WEEX symbol.
-// 2. Read fresh order book.
-// 3. Determine LONG / SHORT / NEUTRAL.
-// 4. Check live position.
-// 5. FLAT + LONG  -> OPEN LONG
-// 6. FLAT + SHORT -> OPEN SHORT
-// 7. LONG + LONG  -> NO ACTION
-// 8. SHORT + SHORT -> NO ACTION
-// 9. LONG + SHORT -> REVERSAL
-// 10. SHORT + LONG -> REVERSAL
-//
-// processSignal() performs another FRESH order-book check
-// immediately before the actual entry.
-//
-// CLOSE is NEVER blocked by order flow.
-//
-// ============================================================
-
-let automaticTradingRunning = false;
-
-let automaticTradingLastRun = null;
-
-let automaticTradingLastResult = null;
-
-
-// ============================================================
-// AUTOMATIC SLEEP
-// ============================================================
-
-function automaticSleep(ms) {
-
-    return new Promise(
-        resolve =>
-            setTimeout(
-                resolve,
-                ms
-            )
-    );
-}
-
-
-// ============================================================
-// GET AUTOMATIC ORDER-FLOW DECISION
-// ============================================================
-//
-// IMPORTANT:
-//
-// Automatic trading MUST use the same multi-depth confirmation
-// rule as the real entry:
-//
-//     15 + 30 + 60
-//
-//     REQUIRED = 2 OF 3
-//
-// We evaluate LONG and SHORT separately.
-//
-// LONG:
-//     2/3 LONG depths must pass
-//
-// SHORT:
-//     2/3 SHORT depths must pass
-//
-// If neither direction is confirmed:
-//
-//     NEUTRAL
-//
-// The actual entry is still checked AGAIN by processSignal()
-// using another fresh order-book snapshot.
-//
-// ============================================================
-
-async function getAutomaticOrderFlowDecision(symbol) {
-
-    symbol =
-        normalizeSymbol(symbol);
-
-    try {
-
-        const result =
-            await checkOrderBook(
-                symbol
-            );
-
-        return {
-
-            direction:
-                result.direction || "NEUTRAL",
-
-            confirmationPassed:
-                result.confirmationPassed === true,
-
-            passedDepths:
-                result.passedDepths ?? 0,
-
-            requiredPassedDepths:
-                result.requiredPassedDepths ?? 2,
-
-            confirmationDepths:
-                result.confirmationDepths ?? [15, 30, 60],
-
-            imbalance:
-                Number(
-                    result.analysis?.snapshot
-                        ? calculateDisplayImbalance(result)
-                        : NaN
-                ),
-
-            reason:
-                result.reason ||
-                "MULTI_DEPTH_CONFIRMATION_FAILED",
-
-            orderBook:
-                result,
-
-            long:
-                result.long,
-
-            short:
-                result.short
-        };
-
-    } catch (error) {
-
-        return {
-
-            direction:
-                "NEUTRAL",
-
-            confirmationPassed:
-                false,
-
-            passedDepths:
-                0,
-
-            requiredPassedDepths:
-                2,
-
-            confirmationDepths:
-                [15, 30, 60],
-
-            imbalance:
-                NaN,
-
-            reason:
-                "ORDER_BOOK_ERROR",
-
-            error:
-                error.message
-        };
-    }
-}
-
-
-// ============================================================
-// CHECK WHETHER PROCESS RESULT WAS A REAL TRADE
-// ============================================================
-
-function wasActualTrade(
-    processResult
-) {
-
-    if (
-        !processResult ||
-        !processResult.success
-    ) {
-        return false;
-    }
-
-
-    return (
-        processResult.action === "OPENED_LONG" ||
-        processResult.action === "OPENED_SHORT" ||
-        processResult.action === "REVERSED_TO_LONG" ||
-        processResult.action === "REVERSED_TO_SHORT"
-    );
-}
-
-
-// ============================================================
-// AUTOMATIC ORDER-FLOW SCAN
-// ============================================================
-
-async function runAutomaticTradingCycle() {
-
-    if (
-        !AUTO_TRADING_ENABLED
-    ) {
-
-        console.log("");
-
-        console.log(
-            "AUTOMATIC TRADING: DISABLED"
-        );
-
-        return {
-
-            success: false,
-
-            skipped: true,
-
-            reason:
-                "AUTO_TRADING_DISABLED"
-        };
-    }
-
-
-    if (
-        !TRADING_ENABLED
-    ) {
-
-        console.log("");
-
-        console.log(
-            "AUTOMATIC TRADING: TRADING_ENABLED IS FALSE"
-        );
-
-        return {
-
-            success: false,
-
-            skipped: true,
-
-            reason:
-                "TRADING_DISABLED"
-        };
-    }
-
-
-    // --------------------------------------------------------
-    // PREVENT OVERLAPPING CYCLES
-    // --------------------------------------------------------
-
-    if (
-        automaticTradingRunning
-    ) {
-
-        console.log("");
-
-        console.log(
-            "AUTOMATIC TRADING: PREVIOUS CYCLE STILL RUNNING"
-        );
-
-        console.log(
-            "New cycle skipped."
-        );
-
-        return {
-
-            success: false,
-
-            skipped: true,
-
-            reason:
-                "PREVIOUS_CYCLE_STILL_RUNNING"
-        };
-    }
-
-
-    automaticTradingRunning = true;
-
-    automaticTradingLastRun =
-        new Date().toISOString();
-
-
-    const cycleStart =
-        Date.now();
-
-
-    const results = [];
-
-    let tradesThisCycle = 0;
-
-
-    try {
-
-        const symbols =
-            Array.from(
-                SUPPORTED_SYMBOLS || []
-            ).sort();
-
-
-        console.log("");
-
-        console.log(
-            "############################################################"
-        );
-
-        console.log(
-            "AUTOMATIC ORDER-FLOW TRADING CYCLE"
-        );
-
-        console.log(
-            "############################################################"
-        );
-
-        console.log(
-            "Started:",
-            automaticTradingLastRun
-        );
-
-        console.log(
-            "Symbols:",
-            symbols.length
-        );
-
-        console.log(
-            "LONG threshold:",
-            LONG_MIN_IMBALANCE
-        );
-
-        console.log(
-            "SHORT threshold:",
-            SHORT_MAX_IMBALANCE
-        );
-
-        console.log(
-            "Maximum trades this cycle:",
-            AUTO_TRADING_MAX_TRADES_PER_CYCLE
-        );
-
-        console.log(
-            "Maximum open positions:",
-            Number(MAX_OPEN_POSITIONS) > 0
-                ? MAX_OPEN_POSITIONS
-                : "DISABLED"
-        );
-
-        console.log(
-            "############################################################"
-        );
-
-
-        for (
-            const symbol of symbols
-        ) {
-
-            // ------------------------------------------------
-            // MAX TRADE LIMIT
-            // ------------------------------------------------
-
-            if (
-                tradesThisCycle >=
-                Number(AUTO_TRADING_MAX_TRADES_PER_CYCLE)
-            ) {
-
-                console.log("");
-
-                console.log(
-                    "AUTO TRADE LIMIT REACHED:"
-                );
-
-                console.log(
-                    tradesThisCycle,
-                    "real trades"
-                );
-
-                console.log(
-                    "Remaining symbols will be skipped."
-                );
-
-                break;
-            }
-
-
-            try {
-
-                // ------------------------------------------------
-                // GET CURRENT LIVE POSITION
-                // ------------------------------------------------
-
-                const current =
-                    await getCurrentPosition(
-                        symbol
-                    );
-
-
-                // ------------------------------------------------
-                // FRESH ORDER BOOK DECISION
-                // ------------------------------------------------
-
-                const decision =
-                    await getAutomaticOrderFlowDecision(
-                        symbol
-                    );
-
-
-                console.log("");
-
-                console.log(
-                    "------------------------------------------------------------"
-                );
-
-                console.log(
-                    "AUTO SYMBOL:",
-                    symbol
-                );
-
-                console.log(
-                    "Position:",
-                    current &&
-                    current.direction
-                        ? current.direction
-                        : "UNKNOWN"
-                );
-
-                console.log(
-                    "Imbalance:",
-                    decision.imbalance
-                );
-
-                console.log(
-                    "Order-flow decision:",
-                    decision.direction
-                );
-
-                console.log(
-                    "Reason:",
-                    decision.reason
-                );
-
-
-                // ------------------------------------------------
-                // ORDER BOOK ERROR
-                // ------------------------------------------------
-
-                if (
-                    decision.reason ===
-                    "ORDER_BOOK_ERROR"
-                ) {
-
-                    console.log(
-                        "Action:",
-                        "SKIP"
-                    );
-
-                    results.push({
-
-                        symbol,
-
-                        position:
-                            current.direction,
-
-                        decision:
-                            "ERROR",
-
-                        imbalance:
-                            decision.imbalance,
-
-                        action:
-                            "SKIP",
-
-                        reason:
-                            decision.reason,
-
-                        error:
-                            decision.error
-                    });
-
-
-                    await automaticSleep(
-                        AUTO_TRADING_SYMBOL_DELAY_MS
-                    );
-
-                    continue;
-                }
-
-
-                // ------------------------------------------------
-                // NEUTRAL
-                // ------------------------------------------------
-
-                if (
-                    decision.direction ===
-                    "NEUTRAL"
-                ) {
-
-                    console.log(
-                        "Action:",
-                        "NO TRADE"
-                    );
-
-                    results.push({
-
-                        symbol,
-
-                        position:
-                            current.direction,
-
-                        decision:
-                            "NEUTRAL",
-
-                        imbalance:
-                            decision.imbalance,
-
-                        action:
-                            "NO_ACTION",
-
-                        reason:
-                            decision.reason
-                    });
-
-
-                    await automaticSleep(
-                        AUTO_TRADING_SYMBOL_DELAY_MS
-                    );
-
-                    continue;
-                }
-
-
-                // ------------------------------------------------
-                // SAME DIRECTION
-                // ------------------------------------------------
-
-                if (
-                    current.direction ===
-                    decision.direction
-                ) {
-
-                    console.log(
-                        "Action:",
-                        `ALREADY_${decision.direction}`
-                    );
-
-                    results.push({
-
-                        symbol,
-
-                        position:
-                            current.direction,
-
-                        decision:
-                            decision.direction,
-
-                        imbalance:
-                            decision.imbalance,
-
-                        action:
-                            "NO_ACTION",
-
-                        reason:
-                            `ALREADY_${decision.direction}`
-                    });
-
-
-                    await automaticSleep(
-                        AUTO_TRADING_SYMBOL_DELAY_MS
-                    );
-
-                    continue;
-                }
-
-
-                // ------------------------------------------------
-                // MAX OPEN POSITIONS
-                // ------------------------------------------------
-
-                if (
-                    current.direction ===
-                    "FLAT" &&
-                    Number(MAX_OPEN_POSITIONS) > 0
-                ) {
-
-                    const openPositionCount =
-                        await getOpenPositionCount();
-
-
-                    if (
-                        openPositionCount !== null &&
-                        openPositionCount >=
-                        Number(MAX_OPEN_POSITIONS)
-                    ) {
-
-                        console.log(
-                            "Action:",
-                            "SKIP_MAX_OPEN_POSITIONS"
-                        );
-
-                        console.log(
-                            "Open positions:",
-                            openPositionCount
-                        );
-
-                        console.log(
-                            "Maximum:",
-                            MAX_OPEN_POSITIONS
-                        );
-
-
-                        results.push({
-
-                            symbol,
-
-                            position:
-                                current.direction,
-
-                            decision:
-                                decision.direction,
-
-                            imbalance:
-                                decision.imbalance,
-
-                            action:
-                                "NO_ACTION",
-
-                            reason:
-                                "MAX_OPEN_POSITIONS_REACHED",
-
-                            openPositions:
-                                openPositionCount,
-
-                            maxOpenPositions:
-                                Number(MAX_OPEN_POSITIONS)
-                        });
-
-
-                        await automaticSleep(
-                            AUTO_TRADING_SYMBOL_DELAY_MS
-                        );
-
-                        continue;
-                    }
-                }
-
-
-                // ------------------------------------------------
-                // TRADE REQUIRED
-                // ------------------------------------------------
-
-                const plannedAction =
-                    current.direction === "FLAT"
-                        ? `OPEN_${decision.direction}`
-                        : `REVERSE_${current.direction}_TO_${decision.direction}`;
-
-
-                console.log(
-                    "Action:",
-                    plannedAction
-                );
-
-
-                // ------------------------------------------------
-                // EXECUTE
-                // ------------------------------------------------
-
-                const processResult =
-                    await processSignal(
-                        symbol,
-                        decision.direction
-                    );
-
-
-                // ------------------------------------------------
-                // COUNT ONLY REAL TRADES
-                // ------------------------------------------------
-
-                const actualTrade =
-                    wasActualTrade(
-                        processResult
-                    );
-
-
-                if (
-                    actualTrade
-                ) {
-
-                    tradesThisCycle++;
-
-                    console.log(
-                        "REAL TRADE EXECUTED:",
-                        tradesThisCycle
-                    );
-
-                } else {
-
-                    console.log(
-                        "NO REAL TRADE EXECUTED."
-                    );
-                }
-
-
-                results.push({
-
-                    symbol,
-
-                    position:
-                        current.direction,
-
-                    decision:
-                        decision.direction,
-
-                    imbalance:
-                        decision.imbalance,
-
-                    action:
-                        plannedAction,
-
-                    executed:
-                        actualTrade,
-
-                    result:
-                        processResult
-                });
-
-
-                console.log(
-                    "AUTO RESULT:"
-                );
-
-                console.log(
-                    JSON.stringify(
-                        processResult,
-                        null,
-                        2
-                    )
-                );
-
-
-                await automaticSleep(
-                    AUTO_TRADING_SYMBOL_DELAY_MS
-                );
-
-
-            } catch (error) {
-
-                console.error("");
-
-                console.error(
-                    `AUTO ${symbol} ERROR`
-                );
-
-                console.error(
-                    error.message
-                );
-
-
-                results.push({
-
-                    symbol,
-
-                    action:
-                        "ERROR",
-
-                    error:
-                        error.message
-                });
-
-
-                await automaticSleep(
-                    AUTO_TRADING_SYMBOL_DELAY_MS
-                );
-            }
-        }
-
-
-        const duration =
-            Date.now() -
-            cycleStart;
-
-
-        const summary = {
-
-            success: true,
-
-            started:
-                automaticTradingLastRun,
-
-            finished:
-                new Date().toISOString(),
-
-            durationMs:
-                duration,
-
-            symbolsScanned:
-                results.length,
-
-            trades:
-                tradesThisCycle,
-
-            maxTrades:
-                Number(
-                    AUTO_TRADING_MAX_TRADES_PER_CYCLE
-                ),
-
-            results
-        };
-
-
-        automaticTradingLastResult =
-            summary;
-
-
-        console.log("");
-
-        console.log(
-            "############################################################"
-        );
-
-        console.log(
-            "AUTOMATIC ORDER-FLOW CYCLE COMPLETE"
-        );
-
-        console.log(
-            "############################################################"
-        );
-
-        console.log(
-            "Symbols scanned:",
-            results.length
-        );
-
-        console.log(
-            "Real trades:",
-            tradesThisCycle
-        );
-
-        console.log(
-            "Duration:",
-            duration,
-            "ms"
-        );
-
-        console.log(
-            "############################################################"
-        );
-
-
-        return summary;
-
-
-    } finally {
-
-        automaticTradingRunning = false;
-    }
-}
-
-
-// ============================================================
-// AUTOMATIC TRADING STATUS
-// ============================================================
-
-function getAutomaticTradingStatus() {
-
-    return {
-
-        enabled:
-            AUTO_TRADING_ENABLED,
-
-        tradingEnabled:
-            TRADING_ENABLED,
-
-        running:
-            automaticTradingRunning,
-
-        lastRun:
-            automaticTradingLastRun,
-
-        maxTradesPerCycle:
-            Number(
-                AUTO_TRADING_MAX_TRADES_PER_CYCLE
-            ),
-
-        maxOpenPositions:
-            Number(
-                MAX_OPEN_POSITIONS
-            ) > 0
-                ? Number(MAX_OPEN_POSITIONS)
-                : null,
-
-        symbolDelayMs:
-            Number(
-                AUTO_TRADING_SYMBOL_DELAY_MS
-            ),
-
-        lastResult:
-            automaticTradingLastResult
-    };
-}
-
-
-// ============================================================
-// STATUS
+// STATUS CONFIG
 // ============================================================
 
 function getStatusConfig() {
@@ -2276,21 +1406,29 @@ function getStatusConfig() {
             DEFAULT_LEVERAGE,
 
         targetNotional:
-            Number(DEFAULT_MARGIN) *
-            Number(DEFAULT_LEVERAGE),
+            DEFAULT_MARGIN *
+            DEFAULT_LEVERAGE,
 
         marginMode:
             REQUIRED_MARGIN_MODE,
 
-        automaticTrading:
-            getAutomaticTradingStatus(),
-
         orderBook: {
 
-            enabled: true,
+            enabled:
+                ORDER_BOOK_FILTER_ENABLED,
 
             depth:
                 ORDER_BOOK_DEPTH,
+
+            confirmationRequired:
+                ORDER_BOOK_CONFIRMATION_REQUIRED,
+
+            confirmationDepths: [
+                15,
+                30,
+                60,
+                90,
+            ],
 
             longMinImbalance:
                 LONG_MIN_IMBALANCE,
@@ -2302,12 +1440,12 @@ function getStatusConfig() {
                 MIN_BID_ASK_RATIO,
 
             minAskBidRatio:
-                MIN_ASK_BID_RATIO
+                MIN_ASK_BID_RATIO,
+
         },
 
-        statistics:
-            getOrderBookStats()
     };
+
 }
 
 
@@ -2319,26 +1457,12 @@ module.exports = {
 
     processSignal,
 
+    checkEntryOrderBook,
+
     openMarketPosition,
-
-    runAutomaticTradingCycle,
-
-    getAutomaticTradingStatus,
-
-    checkOrderBook:
-        (
-            symbol,
-            direction
-        ) =>
-            checkOrderBook(
-                symbol,
-                direction,
-                getOrderBook
-            ),
 
     getStatusConfig,
 
-    getOrderBookStats,
+    SUPPORTED_SYMBOLS,
 
-    resetOrderBookStats
 };

@@ -32,11 +32,7 @@ const {
 
 const {
     processSignal,
-    getStatusConfig,
-    getOrderBookStats,
-    resetOrderBookStats,
-    getAutomaticTradingStatus,
-    runAutomaticTradingCycle
+    getStatusConfig
 } = require("./trading/trading");
 
 const {
@@ -82,41 +78,176 @@ let automaticTraderNextRun = null;
 // ============================================================
 // MANAGED SYMBOLS
 // ============================================================
+//
+// IMPORTANT:
+//
+// managedSymbols is a PERSISTENT WATCH / MANAGEMENT LIST.
+//
+// It is NOT the same thing as "currently active WEEX
+// positions".
+//
+// A symbol can be:
+//
+//     managed + LONG
+//     managed + SHORT
+//     managed + FLAT
+//
+// When a position closes, the symbol REMAINS managed.
+//
+// This allows the automatic trader to monitor the symbol and
+// re-enter later when 3-of-4 order-flow confirmation appears.
+//
+// ============================================================
 
 const managedSymbols =
     new Set();
 
 
 // ============================================================
-// TWO-OF-THREE CONFIRMATION
+// ORDER FLOW STATISTICS
 // ============================================================
 //
-// WEEX requests 200 levels.
+// These statistics are maintained by the server.
 //
-// Trading uses only:
+// NOTE:
+// The actual entry filter is performed inside trading.js /
+// weex.js.
+//
+// These counters are therefore updated from server-level
+// automatic decisions where possible.
+//
+// They are intentionally kept here so dashboard/status
+// endpoints never crash when trading.js does not export the
+// old statistics functions.
+//
+// ============================================================
+
+const orderBookStats = {
+
+    total: 0,
+
+    accepted: 0,
+
+    rejected: 0,
+
+    acceptanceRate: 0,
+
+    rejectionRate: 0,
+
+    long: {
+
+        checked: 0,
+
+        accepted: 0,
+
+        rejected: 0
+    },
+
+    short: {
+
+        checked: 0,
+
+        accepted: 0,
+
+        rejected: 0
+    },
+
+    reasons: {},
+
+    symbols: {}
+};
+
+
+function resetOrderBookStats() {
+
+    orderBookStats.total = 0;
+
+    orderBookStats.accepted = 0;
+
+    orderBookStats.rejected = 0;
+
+    orderBookStats.acceptanceRate = 0;
+
+    orderBookStats.rejectionRate = 0;
+
+    orderBookStats.long = {
+
+        checked: 0,
+
+        accepted: 0,
+
+        rejected: 0
+    };
+
+    orderBookStats.short = {
+
+        checked: 0,
+
+        accepted: 0,
+
+        rejected: 0
+    };
+
+    orderBookStats.reasons = {};
+
+    orderBookStats.symbols = {};
+}
+
+
+function getOrderBookStats() {
+
+    return {
+
+        ...orderBookStats,
+
+        long: {
+            ...orderBookStats.long
+        },
+
+        short: {
+            ...orderBookStats.short
+        },
+
+        reasons: {
+            ...orderBookStats.reasons
+        },
+
+        symbols: {
+            ...orderBookStats.symbols
+        }
+    };
+}
+
+
+// ============================================================
+// THREE-OF-FOUR CONFIRMATION
+// ============================================================
+//
+// ONE 200-level WEEX snapshot.
+//
+// Trading confirmation depths:
 //
 //     15
 //     30
 //     60
+//     90
 //
 // Requirement:
 //
-//     AT LEAST 2 OF 3 MUST PASS.
+//     AT LEAST 3 OF 4 MUST PASS.
 //
-// 200 is NOT a trading confirmation depth.
+// Each depth must pass BOTH:
+//
+//     - imbalance
+//     - ratio
 //
 // ============================================================
 
-function getTwoOfThreeConfirmation(
+function getThreeOfFourConfirmation(
     multiDepth
 ) {
 
-    const depths = [
-        15,
-        30,
-        60
-    ];
-
+const depths = [15, 20, 30, 60];
 
     const passedDepths =
         depths.filter(
@@ -124,25 +255,20 @@ function getTwoOfThreeConfirmation(
                 multiDepth?.results?.[depth]?.filterPass === true
         );
 
-
     const failedDepths =
         depths.filter(
             depth =>
                 multiDepth?.results?.[depth]?.filterPass !== true
         );
 
-
     const passedCount =
         passedDepths.length;
 
-
     const confirmationRequired =
-        2;
-
+        3;
 
     const confirmationPassed =
         passedCount >= confirmationRequired;
-
 
     return {
 
@@ -157,12 +283,18 @@ function getTwoOfThreeConfirmation(
 
         passedCount,
 
+        failedCount:
+            failedDepths.length,
+
+        totalDepths:
+            depths.length,
+
         confirmationPassed,
 
         confirmationReason:
             confirmationPassed
-                ? `TWO_OF_THREE_CONFIRMED_${passedCount}_OF_3`
-                : `TWO_OF_THREE_FAILED_${passedCount}_OF_3`
+                ? `THREE_OF_FOUR_CONFIRMED_${passedCount}_OF_4`
+                : `THREE_OF_FOUR_FAILED_${passedCount}_OF_4`
     };
 }
 
@@ -176,9 +308,38 @@ function getPositionSide(
 ) {
 
     if (!position) {
-        return "UNKNOWN";
+        return "FLAT";
     }
 
+
+    const size =
+        Number(
+            position.size ??
+            position.positionSize ??
+            position.quantity ??
+            position.qty ??
+            position.total ??
+            position.available ??
+            0
+        );
+
+
+    // --------------------------------------------------------
+    // ZERO SIZE = FLAT
+    // --------------------------------------------------------
+
+    if (
+        Number.isFinite(size) &&
+        Math.abs(size) === 0
+    ) {
+
+        return "FLAT";
+    }
+
+
+    // --------------------------------------------------------
+    // EXPLICIT DIRECTION
+    // --------------------------------------------------------
 
     const direct =
         String(
@@ -194,16 +355,20 @@ function getPositionSide(
 
     if (
         direct === "LONG" ||
-        direct === "BUY"
+        direct === "BUY" ||
+        direct.includes("LONG")
     ) {
+
         return "LONG";
     }
 
 
     if (
         direct === "SHORT" ||
-        direct === "SELL"
+        direct === "SELL" ||
+        direct.includes("SHORT")
     ) {
+
         return "SHORT";
     }
 
@@ -212,39 +377,8 @@ function getPositionSide(
         direct === "FLAT" ||
         direct === "NONE"
     ) {
+
         return "FLAT";
-    }
-
-
-    const size =
-        Number(
-            position.size ??
-            position.positionSize ??
-            position.quantity ??
-            position.qty ??
-            0
-        );
-
-
-    if (
-        !Number.isFinite(size) ||
-        Math.abs(size) === 0
-    ) {
-        return "FLAT";
-    }
-
-
-    if (
-        direct.includes("LONG")
-    ) {
-        return "LONG";
-    }
-
-
-    if (
-        direct.includes("SHORT")
-    ) {
-        return "SHORT";
     }
 
 
@@ -278,8 +412,15 @@ function addManagedSymbol(
             normalized
         )
     ) {
+
         return false;
     }
+
+
+    const alreadyManaged =
+        managedSymbols.has(
+            normalized
+        );
 
 
     managedSymbols.add(
@@ -287,47 +428,16 @@ function addManagedSymbol(
     );
 
 
-    console.log(
-        "MANAGED SYMBOL ADDED:",
-        normalized
-    );
+    if (!alreadyManaged) {
+
+        console.log(
+            "MANAGED SYMBOL ADDED:",
+            normalized
+        );
+    }
 
 
     return true;
-}
-
-
-function removeManagedSymbol(
-    symbol
-) {
-
-    const normalized =
-        normalizeSymbol(
-            symbol
-        );
-
-
-    if (!normalized) {
-        return false;
-    }
-
-
-    const removed =
-        managedSymbols.delete(
-            normalized
-        );
-
-
-    if (removed) {
-
-        console.log(
-            "MANAGED SYMBOL REMOVED:",
-            normalized
-        );
-    }
-
-
-    return removed;
 }
 
 
@@ -342,6 +452,24 @@ function managedList() {
 // ============================================================
 // DISCOVER LIVE WEEX POSITIONS
 // ============================================================
+//
+// IMPORTANT:
+//
+// This function uses LIVE WEEX positions to determine which
+// symbols currently have positions.
+//
+// BUT:
+//
+// It does NOT remove flat symbols from managedSymbols.
+//
+// Therefore:
+//
+//     active position -> add/keep
+//     flat position   -> KEEP managed symbol
+//     unknown         -> KEEP managed symbol
+//     API error       -> KEEP managed symbol
+//
+// ============================================================
 
 async function discoverLivePositions() {
 
@@ -353,9 +481,6 @@ async function discoverLivePositions() {
 
     const activePositions =
         [];
-
-    const discoveredActive =
-        new Set();
 
 
     console.log("");
@@ -396,12 +521,16 @@ async function discoverLivePositions() {
                 );
 
 
+            // ------------------------------------------------
+            // ACTIVE POSITION
+            // ------------------------------------------------
+
             if (
                 direction === "LONG" ||
                 direction === "SHORT"
             ) {
 
-                discoveredActive.add(
+                managedSymbols.add(
                     symbol
                 );
 
@@ -415,6 +544,7 @@ async function discoverLivePositions() {
                     quantity:
                         position.quantity ??
                         position.size ??
+                        position.positionSize ??
                         0,
 
                     avgPrice:
@@ -436,52 +566,56 @@ async function discoverLivePositions() {
                     symbol,
                     direction
                 );
+
+
+                continue;
             }
+
+
+            // ------------------------------------------------
+            // FLAT
+            // ------------------------------------------------
+            //
+            // DO NOT REMOVE FROM managedSymbols.
+            //
+            // The symbol remains under automatic monitoring.
+            //
+            // ------------------------------------------------
+
+            if (
+                direction === "FLAT"
+            ) {
+
+                if (
+                    managedSymbols.has(
+                        symbol
+                    )
+                ) {
+
+                    console.log(
+                        "WEEX POSITION CLOSED - KEEPING IN WATCH:",
+                        symbol
+                    );
+                }
+
+                continue;
+            }
+
+
+            // ------------------------------------------------
+            // UNKNOWN
+            // ------------------------------------------------
+
+            console.log(
+                "POSITION STATUS UNKNOWN - KEEPING MANAGED STATE:",
+                symbol
+            );
 
         } catch (error) {
 
             console.error(
                 `POSITION DISCOVERY ERROR ${symbol}:`,
                 error.message
-            );
-        }
-    }
-
-
-    const previousManaged =
-        new Set(
-            managedSymbols
-        );
-
-
-    for (
-        const symbol of discoveredActive
-    ) {
-
-        managedSymbols.add(
-            symbol
-        );
-    }
-
-
-    for (
-        const symbol of previousManaged
-    ) {
-
-        if (
-            !discoveredActive.has(
-                symbol
-            )
-        ) {
-
-            managedSymbols.delete(
-                symbol
-            );
-
-
-            console.log(
-                "WEEX POSITION NO LONGER ACTIVE:",
-                symbol
             );
         }
     }
@@ -517,6 +651,17 @@ async function discoverLivePositions() {
     }
 
 
+    console.log("");
+
+    console.log(
+        "CURRENT MANAGED SYMBOLS:"
+    );
+
+    console.log(
+        managedList()
+    );
+
+
     console.log(
         "############################################################"
     );
@@ -548,12 +693,14 @@ section(
     "TRADINGVIEW -> WEEX SERVER V3"
 );
 
+
 console.log(
     "Trading:",
     TRADING_ENABLED
         ? "ENABLED - LIVE"
         : "DISABLED"
 );
+
 
 console.log(
     "Automatic trading:",
@@ -562,15 +709,18 @@ console.log(
         : "DISABLED"
 );
 
+
 console.log(
     "Automatic interval:",
     `${AUTO_TRADING_INTERVAL_MS / 60000} minutes`
 );
 
+
 console.log(
     "API:",
     "WEEX V3 USDT-M FUTURES"
 );
+
 
 console.log(
     "Default margin:",
@@ -578,11 +728,13 @@ console.log(
     "USDT"
 );
 
+
 console.log(
     "Default leverage:",
     DEFAULT_LEVERAGE,
     "x"
 );
+
 
 console.log(
     "Target notional:",
@@ -591,59 +743,70 @@ console.log(
     "USDT"
 );
 
+
 console.log(
     "Required margin mode:",
     REQUIRED_MARGIN_MODE
 );
+
 
 console.log(
     "WEEX API order-book request:",
     `${WEEX_REQUEST_DEPTH} levels`
 );
 
+
 console.log(
     "Trading confirmation depths:",
     CONFIRMATION_DEPTHS.join(" + ")
 );
 
+
 console.log(
     "Confirmation rule:",
-    "2 OF 3 DEPTHS MUST PASS"
+    "3 OF 4 DEPTHS MUST PASS"
 );
+
 
 console.log(
     "LONG:",
     `imbalance >= ${LONG_MIN_IMBALANCE}`,
     `AND bid/ask >= ${MIN_BID_ASK_RATIO}`,
-    "AT LEAST 2 OF 3 DEPTHS"
+    "AT LEAST 3 OF 4 DEPTHS"
 );
+
 
 console.log(
     "SHORT:",
     `imbalance <= ${SHORT_MAX_IMBALANCE}`,
     `AND ask/bid >= ${MIN_ASK_BID_RATIO}`,
-    "AT LEAST 2 OF 3 DEPTHS"
+    "AT LEAST 3 OF 4 DEPTHS"
 );
+
 
 console.log(
     "CLOSE:",
     "NEVER FILTERED"
 );
 
+
 console.log(
     "Webhook:",
     "FAST ACK + BACKGROUND PROCESSING"
 );
+
 
 console.log(
     "Concurrency:",
     "PER-SYMBOL LOCKS"
 );
 
+
 console.log(
     "Automatic trader:",
-    "LIVE WEEX POSITIONS -> 2 OF 3 ORDER BOOK -> HOLD / FLIP"
+    "LIVE WEEX POSITIONS -> 3 OF 4 ORDER BOOK -> HOLD / FLIP"
 );
+
 
 console.log(
     "============================================================"
@@ -933,7 +1096,7 @@ async function runManagedTrader() {
         console.log("");
 
         section(
-            "AUTOMATIC 2-OF-3 ORDER BOOK POSITION CHECK"
+            "AUTOMATIC 3-OF-4 ORDER BOOK POSITION CHECK"
         );
 
 
@@ -942,24 +1105,28 @@ async function runManagedTrader() {
             discovery.totalSymbols
         );
 
+
         console.log(
             "Active WEEX positions:",
             discovery.activeCount
         );
+
 
         console.log(
             "Managed symbols:",
             symbols.length
         );
 
+
         console.log(
             "Confirmation depths:",
             CONFIRMATION_DEPTHS.join(" + ")
         );
 
+
         console.log(
             "Confirmation required:",
-            "2 OF 3"
+            "3 OF 4"
         );
 
 
@@ -970,7 +1137,7 @@ async function runManagedTrader() {
             console.log("");
 
             console.log(
-                "NO ACTIVE WEEX POSITIONS FOUND."
+                "NO MANAGED SYMBOLS FOUND."
             );
 
 
@@ -1012,6 +1179,15 @@ async function runManagedTrader() {
                 errors:
                     0,
 
+                confirmationDepths:
+                    [...CONFIRMATION_DEPTHS],
+
+                confirmationRequired:
+                    3,
+
+                confirmationRule:
+                    "3_OF_4",
+
                 results:
                     []
             };
@@ -1036,17 +1212,208 @@ async function runManagedTrader() {
                     );
 
 
+                // ====================================================
+                // FLAT / WATCHING
+                // ====================================================
+
                 if (
                     positionSide !== "LONG" &&
                     positionSide !== "SHORT"
                 ) {
 
-                    managedSymbols.delete(
+                    flatActions++;
+
+
+                    console.log("");
+
+                    console.log(
+                        "WATCH POSITION:",
                         symbol
                     );
 
+                    console.log(
+                        "Position:",
+                        "FLAT"
+                    );
 
-                    flatActions++;
+                    console.log(
+                        "Action:",
+                        "CHECKING ORDER BOOK FOR RE-ENTRY"
+                    );
+
+
+                    // IMPORTANT:
+                    // Symbol remains in managedSymbols.
+
+                    const snapshot =
+                        await getMultiDepthSnapshot(
+                            symbol
+                        );
+
+
+                    const longDepth =
+                        evaluateMultiDepth(
+                            snapshot.bids,
+                            snapshot.asks,
+                            "LONG"
+                        );
+
+
+                    const shortDepth =
+                        evaluateMultiDepth(
+                            snapshot.bids,
+                            snapshot.asks,
+                            "SHORT"
+                        );
+
+
+                    const longConfirmation =
+                        getThreeOfFourConfirmation(
+                            longDepth
+                        );
+
+
+                    const shortConfirmation =
+                        getThreeOfFourConfirmation(
+                            shortDepth
+                        );
+
+
+                    const longAllowed =
+                        longConfirmation.confirmationPassed;
+
+
+                    const shortAllowed =
+                        shortConfirmation.confirmationPassed;
+
+
+                    let decision =
+                        "NEUTRAL";
+
+
+                    if (
+                        longAllowed &&
+                        !shortAllowed
+                    ) {
+
+                        decision =
+                            "LONG";
+
+                    } else if (
+                        shortAllowed &&
+                        !longAllowed
+                    ) {
+
+                        decision =
+                            "SHORT";
+                    }
+
+
+                    console.log(
+                        "WATCH DECISION:",
+                        decision
+                    );
+
+
+                    console.log(
+                        "LONG 15/30/60/90:",
+                        longDepth.results[15]?.filterPass,
+                        longDepth.results[30]?.filterPass,
+                        longDepth.results[60]?.filterPass,
+                        longDepth.results[90]?.filterPass,
+                        `=> ${longConfirmation.passedCount}/4 PASS`
+                    );
+
+
+                    console.log(
+                        "SHORT 15/30/60/90:",
+                        shortDepth.results[15]?.filterPass,
+                        shortDepth.results[30]?.filterPass,
+                        shortDepth.results[60]?.filterPass,
+                        shortDepth.results[90]?.filterPass,
+                        `=> ${shortConfirmation.passedCount}/4 PASS`
+                    );
+
+
+                    // ------------------------------------------------
+                    // NEUTRAL
+                    // ------------------------------------------------
+
+                    if (
+                        decision === "NEUTRAL"
+                    ) {
+
+                        neutral++;
+
+
+                        results.push({
+
+                            symbol,
+
+                            position:
+                                "FLAT",
+
+                            decision,
+
+                            action:
+                                "WATCH",
+
+                            reason:
+                                "POSITION_CLOSED_WAITING_FOR_3_OF_4_REENTRY",
+
+                            longConfirmation,
+
+                            shortConfirmation
+                        });
+
+
+                        continue;
+                    }
+
+
+                    // ------------------------------------------------
+                    // VALID RE-ENTRY
+                    // ------------------------------------------------
+
+                    console.log("");
+
+                    console.log(
+                        "AUTOMATIC RE-ENTRY REQUIRED"
+                    );
+
+                    console.log(
+                        "Symbol:",
+                        symbol
+                    );
+
+                    console.log(
+                        "Current:",
+                        "FLAT"
+                    );
+
+                    console.log(
+                        "New:",
+                        decision
+                    );
+
+
+                    const result =
+                        await processSignal(
+                            symbol,
+                            decision
+                        );
+
+
+                    if (
+                        decision === "LONG"
+                    ) {
+
+                        longActions++;
+
+                    } else {
+
+                        shortActions++;
+                    }
 
 
                     results.push({
@@ -1056,14 +1423,16 @@ async function runManagedTrader() {
                         position:
                             "FLAT",
 
-                        decision:
-                            "NONE",
+                        decision,
 
                         action:
-                            "POSITION_CLOSED",
+                            `REOPEN_${decision}`,
 
-                        reason:
-                            "WEEX_POSITION_NO_LONGER_ACTIVE"
+                        longConfirmation,
+
+                        shortConfirmation,
+
+                        result
                     });
 
 
@@ -1071,9 +1440,9 @@ async function runManagedTrader() {
                 }
 
 
-                // ------------------------------------------------
-                // ONE 200-LEVEL SNAPSHOT
-                // ------------------------------------------------
+                // ====================================================
+                // ACTIVE POSITION
+                // ====================================================
 
                 const snapshot =
                     await getMultiDepthSnapshot(
@@ -1082,7 +1451,7 @@ async function runManagedTrader() {
 
 
                 // ------------------------------------------------
-                // LONG EVALUATION
+                // LONG
                 // ------------------------------------------------
 
                 const longDepth =
@@ -1094,7 +1463,7 @@ async function runManagedTrader() {
 
 
                 // ------------------------------------------------
-                // SHORT EVALUATION
+                // SHORT
                 // ------------------------------------------------
 
                 const shortDepth =
@@ -1106,17 +1475,17 @@ async function runManagedTrader() {
 
 
                 // ------------------------------------------------
-                // TWO-OF-THREE CONFIRMATION
+                // THREE-OF-FOUR CONFIRMATION
                 // ------------------------------------------------
 
                 const longConfirmation =
-                    getTwoOfThreeConfirmation(
+                    getThreeOfFourConfirmation(
                         longDepth
                     );
 
 
                 const shortConfirmation =
-                    getTwoOfThreeConfirmation(
+                    getThreeOfFourConfirmation(
                         shortDepth
                     );
 
@@ -1168,22 +1537,30 @@ async function runManagedTrader() {
                     decision
                 );
 
+
                 console.log(
-                    "LONG 15/30/60:",
+                    "LONG 15/30/60/90:",
                     longDepth.results[15]?.filterPass,
                     longDepth.results[30]?.filterPass,
                     longDepth.results[60]?.filterPass,
-                    `=> ${longConfirmation.passedCount}/3 PASS`
+                    longDepth.results[90]?.filterPass,
+                    `=> ${longConfirmation.passedCount}/4 PASS`
                 );
 
+
                 console.log(
-                    "SHORT 15/30/60:",
+                    "SHORT 15/30/60/90:",
                     shortDepth.results[15]?.filterPass,
                     shortDepth.results[30]?.filterPass,
                     shortDepth.results[60]?.filterPass,
-                    `=> ${shortConfirmation.passedCount}/3 PASS`
+                    shortDepth.results[90]?.filterPass,
+                    `=> ${shortConfirmation.passedCount}/4 PASS`
                 );
 
+
+                // ------------------------------------------------
+                // NEUTRAL
+                // ------------------------------------------------
 
                 if (
                     decision === "NEUTRAL"
@@ -1205,7 +1582,7 @@ async function runManagedTrader() {
                             "NO_ACTION",
 
                         reason:
-                            "TWO_OF_THREE_ORDER_BOOK_NEUTRAL",
+                            "THREE_OF_FOUR_ORDER_BOOK_NEUTRAL",
 
                         longConfirmation,
 
@@ -1216,6 +1593,10 @@ async function runManagedTrader() {
                     continue;
                 }
 
+
+                // ------------------------------------------------
+                // SAME DIRECTION
+                // ------------------------------------------------
 
                 if (
                     positionSide === decision
@@ -1237,7 +1618,7 @@ async function runManagedTrader() {
                             `STAY_${decision}`,
 
                         reason:
-                            `TWO_OF_THREE_ORDER_FLOW_SUPPORTS_EXISTING_${decision}`,
+                            `THREE_OF_FOUR_ORDER_FLOW_SUPPORTS_EXISTING_${decision}`,
 
                         longConfirmation,
 
@@ -1248,6 +1629,10 @@ async function runManagedTrader() {
                     continue;
                 }
 
+
+                // ------------------------------------------------
+                // OPPOSITE DIRECTION = REVERSAL
+                // ------------------------------------------------
 
                 if (
                     positionSide !== decision
@@ -1268,7 +1653,7 @@ async function runManagedTrader() {
                     console.log("");
 
                     console.log(
-                        "AUTOMATIC 2-OF-3 REVERSAL REQUIRED"
+                        "AUTOMATIC 3-OF-4 REVERSAL REQUIRED"
                     );
 
                     console.log(
@@ -1366,10 +1751,10 @@ async function runManagedTrader() {
                 [...CONFIRMATION_DEPTHS],
 
             confirmationRequired:
-                2,
+                3,
 
             confirmationRule:
-                "2_OF_3",
+                "3_OF_4",
 
             longActions,
 
@@ -1396,7 +1781,7 @@ async function runManagedTrader() {
         );
 
         console.log(
-            "AUTOMATIC 2-OF-3 POSITION CHECK COMPLETE"
+            "AUTOMATIC 3-OF-4 POSITION CHECK COMPLETE"
         );
 
         console.log(
@@ -1405,7 +1790,7 @@ async function runManagedTrader() {
 
         console.log(
             "Confirmation:",
-            "2 OF 3"
+            "3 OF 4"
         );
 
         console.log(
@@ -1641,6 +2026,10 @@ app.post(
             }
 
 
+            // ------------------------------------------------
+            // IMMEDIATE ACK
+            // ------------------------------------------------
+
             res.status(
                 200
             ).json({
@@ -1665,12 +2054,25 @@ app.post(
             );
 
 
+            // ------------------------------------------------
+            // BACKGROUND PROCESSING
+            // ------------------------------------------------
+
             processSignal(
                 symbol,
                 action
             )
                 .then(
                     result => {
+
+                        // ------------------------------------------------
+                        // LONG / SHORT
+                        // ------------------------------------------------
+                        //
+                        // Successful entry signals make the symbol
+                        // managed.
+                        //
+                        // ------------------------------------------------
 
                         if (
                             action === "LONG" ||
@@ -1686,12 +2088,39 @@ app.post(
                                     symbol
                                 );
                             }
+                        }
 
-                        } else {
 
-                            removeManagedSymbol(
-                                symbol
-                            );
+                        // ------------------------------------------------
+                        // CLOSE
+                        // ------------------------------------------------
+                        //
+                        // IMPORTANT:
+                        //
+                        // DO NOT REMOVE managed symbol.
+                        //
+                        // The symbol stays watched for future
+                        // automatic re-entry.
+                        //
+                        // ------------------------------------------------
+
+                        if (
+                            action === "CLOSE" ||
+                            action === "CLOSE_LONG" ||
+                            action === "CLOSE_SHORT"
+                        ) {
+
+                            if (
+                                managedSymbols.has(
+                                    symbol
+                                )
+                            ) {
+
+                                console.log(
+                                    "CLOSE COMPLETE - SYMBOL REMAINS MANAGED:",
+                                    symbol
+                                );
+                            }
                         }
 
 
@@ -1865,6 +2294,10 @@ async function handleManualSignal(
             );
 
 
+        // ------------------------------------------------
+        // LONG / SHORT
+        // ------------------------------------------------
+
         if (
             (
                 action === "LONG" ||
@@ -1879,13 +2312,22 @@ async function handleManualSignal(
         }
 
 
+        // ------------------------------------------------
+        // CLOSE
+        // ------------------------------------------------
+        //
+        // DO NOT remove managed symbol.
+        //
+        // ------------------------------------------------
+
         if (
             action === "CLOSE" ||
             action === "CLOSE_LONG" ||
             action === "CLOSE_SHORT"
         ) {
 
-            removeManagedSymbol(
+            console.log(
+                "MANUAL CLOSE - SYMBOL REMAINS MANAGED:",
                 symbol
             );
         }
@@ -1894,6 +2336,11 @@ async function handleManualSignal(
         res.json({
 
             ...result,
+
+            managed:
+                managedSymbols.has(
+                    symbol
+                ),
 
             managedSymbols:
                 managedList()
@@ -2040,7 +2487,7 @@ app.get(
 
 
             section(
-                "READ-ONLY 2-OF-3 ORDER BOOK TEST",
+                "READ-ONLY 3-OF-4 ORDER BOOK TEST",
                 "#"
             );
 
@@ -2067,7 +2514,7 @@ app.get(
 
             console.log(
                 "Rule:",
-                "2 OF 3"
+                "3 OF 4"
             );
 
             console.log(
@@ -2096,7 +2543,7 @@ app.get(
 
 
             const confirmation =
-                getTwoOfThreeConfirmation(
+                getThreeOfFourConfirmation(
                     multiDepth
                 );
 
@@ -2129,10 +2576,10 @@ app.get(
                     [...CONFIRMATION_DEPTHS],
 
                 confirmationRequired:
-                    2,
+                    3,
 
                 confirmationRule:
-                    "2_OF_3",
+                    "3_OF_4",
 
                 confirmationPassed:
                     confirmation.confirmationPassed,
@@ -2145,6 +2592,9 @@ app.get(
 
                 passedCount:
                     confirmation.passedCount,
+
+                failedCount:
+                    confirmation.failedCount,
 
                 confirmationReason:
                     confirmation.confirmationReason,
@@ -2308,10 +2758,6 @@ app.get(
                 );
 
 
-        const automatic =
-            getAutomaticTradingStatus();
-
-
         res.json({
 
             count:
@@ -2339,18 +2785,16 @@ app.get(
                     [...CONFIRMATION_DEPTHS],
 
                 confirmationRequired:
-                    2,
+                    3,
 
                 confirmationRule:
-                    "2_OF_3"
+                    "3_OF_4"
             },
 
             orderFlowStatistics:
                 getOrderBookStats(),
 
             automaticTrader: {
-
-                ...automatic,
 
                 enabled:
                     AUTO_TRADING_ENABLED,
@@ -2372,7 +2816,10 @@ app.get(
                     automaticTraderNextRun,
 
                 managedSymbols:
-                    managedList()
+                    managedList(),
+
+                managedCount:
+                    managedSymbols.size
             },
 
             symbols
@@ -2511,7 +2958,7 @@ app.post(
                 true,
 
             message:
-                "Automatic 2-of-3 live-position scan started in background."
+                "Automatic 3-of-4 live-position scan started in background."
         });
     }
 );
@@ -2564,20 +3011,26 @@ app.get(
                 [...CONFIRMATION_DEPTHS],
 
             multiDepthConfirmationRequired:
-                2,
+                3,
 
             multiDepthConfirmationRule:
-                "2_OF_3",
+                "3_OF_4",
 
-            tradingModuleAutomaticStatus:
-                getAutomaticTradingStatus()
+            orderBookStats:
+                getOrderBookStats()
         });
     }
 );
 
 
 // ============================================================
-// EXISTING AUTOMATIC ORDER-FLOW MODULE
+// AUTOMATIC ORDER-FLOW MODULE
+// ============================================================
+//
+// This endpoint now uses the SAME automatic trader.
+//
+// There is no second automatic trading engine.
+//
 // ============================================================
 
 app.post(
@@ -2590,7 +3043,7 @@ app.post(
         try {
 
             const result =
-                await runAutomaticTradingCycle();
+                await runManagedTrader();
 
 
             res.json(
@@ -2635,8 +3088,9 @@ app.post(
 //     15
 //     30
 //     60
+//     90
 //
-// AT LEAST 2 OF 3 MUST PASS.
+// AT LEAST 3 OF 4 MUST PASS.
 //
 // ============================================================
 
@@ -2711,17 +3165,17 @@ app.get(
 
 
             // ------------------------------------------------
-            // TWO-OF-THREE
+            // THREE-OF-FOUR
             // ------------------------------------------------
 
             const longConfirmation =
-                getTwoOfThreeConfirmation(
+                getThreeOfFourConfirmation(
                     longDepth
                 );
 
 
             const shortConfirmation =
-                getTwoOfThreeConfirmation(
+                getThreeOfFourConfirmation(
                     shortDepth
                 );
 
@@ -2787,10 +3241,10 @@ app.get(
                     [...CONFIRMATION_DEPTHS],
 
                 confirmationRequired:
-                    2,
+                    3,
 
                 confirmationRule:
-                    "2_OF_3",
+                    "3_OF_4",
 
                 multiDepth: {
 
@@ -2877,95 +3331,113 @@ app.get(
                         shortDepth.results
                 },
 
-                dashboard: {
+    dashboard: {
 
-                    depth15: {
+    depth15: {
 
-                        long:
-                            longDepth.results[15],
+        long:
+            longDepth.results[15],
 
-                        short:
-                            shortDepth.results[15]
-                    },
+        short:
+            shortDepth.results[15]
+    },
 
-                    depth30: {
+    depth20: {
 
-                        long:
-                            longDepth.results[30],
+        long:
+            longDepth.results[20],
 
-                        short:
-                            shortDepth.results[30]
-                    },
+        short:
+            shortDepth.results[20]
+    },
 
-                    depth60: {
+    depth30: {
 
-                        long:
-                            longDepth.results[60],
+        long:
+            longDepth.results[30],
 
-                        short:
-                            shortDepth.results[60]
-                    },
+        short:
+            shortDepth.results[30]
+    },
 
-                    depths: {
+    depth60: {
 
-                        15: {
+        long:
+            longDepth.results[60],
 
-                            long:
-                                longDepth.results[15],
+        short:
+            shortDepth.results[60]
+    },
 
-                            short:
-                                shortDepth.results[15]
-                        },
+    depths: {
 
-                        30: {
+        15: {
 
-                            long:
-                                longDepth.results[30],
+            long:
+                longDepth.results[15],
 
-                            short:
-                                shortDepth.results[30]
-                        },
+            short:
+                shortDepth.results[15]
+        },
 
-                        60: {
+        20: {
 
-                            long:
-                                longDepth.results[60],
+            long:
+                longDepth.results[20],
 
-                            short:
-                                shortDepth.results[60]
-                        }
-                    },
+            short:
+                shortDepth.results[20]
+        },
 
-                    decision,
+        30: {
 
-                    longAllowed,
+            long:
+                longDepth.results[30],
 
-                    shortAllowed,
+            short:
+                shortDepth.results[30]
+        },
 
-                    longPassedDepths:
-                        longConfirmation.passedDepths,
+        60: {
 
-                    shortPassedDepths:
-                        shortConfirmation.passedDepths,
+            long:
+                longDepth.results[60],
 
-                    longPassedCount:
-                        longConfirmation.passedCount,
+            short:
+                shortDepth.results[60]
+        }
+    },
 
-                    shortPassedCount:
-                        shortConfirmation.passedCount,
+    decision,
 
-                    confirmationDepths:
-                        [...CONFIRMATION_DEPTHS],
+    longAllowed,
 
-                    confirmationRequired:
-                        2,
+    shortAllowed,
 
-                    confirmationRule:
-                        "2_OF_3",
+    longPassedDepths:
+        longConfirmation.passedDepths,
 
-                    timestamp:
-                        new Date().toISOString()
-                }
+    shortPassedDepths:
+        shortConfirmation.passedDepths,
+
+    longPassedCount:
+        longConfirmation.passedCount,
+
+    shortPassedCount:
+        shortConfirmation.passedCount,
+
+    confirmationDepths:
+        [...CONFIRMATION_DEPTHS],
+
+    confirmationRequired:
+        3,
+
+    confirmationRule:
+        "3_OF_4",
+
+    timestamp:
+        new Date().toISOString()
+}
             });
 
         } catch (error) {
@@ -3130,20 +3602,20 @@ app.get(
                         [...CONFIRMATION_DEPTHS],
 
                     confirmationRequired:
-                        2,
+                        3,
 
                     confirmationRule:
-                        "2_OF_3"
+                        "3_OF_4"
                 },
 
                 orderFlowStatistics:
                     getOrderBookStats(),
 
                 reversal:
-                    "CLOSE -> CONFIRM FLAT -> FRESH 200-LEVEL SNAPSHOT -> 2 OF 3 -> OPEN",
+                    "CLOSE -> CONFIRM FLAT -> FRESH 200-LEVEL SNAPSHOT -> 3 OF 4 -> OPEN",
 
                 automaticStrategy:
-                    "LIVE WEEX POSITIONS -> 2 OF 3 ORDER BOOK -> HOLD / FLIP",
+                    "LIVE WEEX POSITIONS -> 3 OF 4 ORDER BOOK -> HOLD / FLIP",
 
                 discoveredSymbols:
                     SUPPORTED_SYMBOLS.size,
@@ -3350,17 +3822,17 @@ app.listen(
 
         console.log(
             "Confirmation rule:",
-            "2 OF 3"
+            "3 OF 4"
         );
 
         console.log(
             "LONG:",
-            "2 OF 3 DEPTHS PASS"
+            "3 OF 4 DEPTHS PASS"
         );
 
         console.log(
             "SHORT:",
-            "2 OF 3 DEPTHS PASS"
+            "3 OF 4 DEPTHS PASS"
         );
 
         console.log(
@@ -3370,7 +3842,7 @@ app.listen(
 
         console.log(
             "Reversal:",
-            "CLOSE -> FLAT -> FRESH 200 -> 2 OF 3 -> OPEN"
+            "CLOSE -> FLAT -> FRESH 200 -> 3 OF 4 -> OPEN"
         );
 
         console.log(
@@ -3490,7 +3962,7 @@ app.listen(
             console.log("");
 
             console.log(
-                "READ-ONLY 2-OF-3 TEST:"
+                "READ-ONLY 3-OF-4 TEST:"
             );
 
             console.log(
@@ -3504,7 +3976,7 @@ app.listen(
 
             console.log(
                 "Rule:",
-                "2 OF 3"
+                "3 OF 4"
             );
 
             console.log(
@@ -3622,7 +4094,7 @@ app.listen(
 
 
             console.log(
-                "LIVE 2-OF-3 ORDER BOOK:"
+                "LIVE 3-OF-4 ORDER BOOK:"
             );
 
             console.log(
@@ -3684,4 +4156,3 @@ app.listen(
         }
     }
 );
-

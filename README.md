@@ -1,11 +1,17 @@
 # TradingView → WEEX Bot V3
 
 **Status:** Active Development
+
 **Version:** SERVER V3
-**Last Updated:** 2026-08-31
+
+**Last Updated:** 2026-09-02
+
 **Main Entry Point:** `server_v3.js`
+
 **Execution Exchange:** WEEX V3 USDT-M Futures
+
 **Position Source of Truth:** Live WEEX account position
+
 **Order-Book Source:** WEEX REST market depth via `weex.js`
 
 ---
@@ -16,22 +22,37 @@ This project receives trading signals from a TradingView Pine strategy through w
 
 The system is intentionally split into a small number of modules:
 
-
+```text
 TradingView Pine Strategy
+
         |
+
         | LONG / SHORT / CLOSE webhook
+
         v
+
 server_v3.js
+
         |
+
         v
+
 trading/trading.js
+
         |
+
         +----> filters/orderBook.js
+
         |
+
         v
+
 weex/weex.js
+
         |
+
         v
+
 WEEX V3 USDT-M Futures
 ```
 
@@ -67,33 +88,49 @@ The actual WEEX account position is always authoritative.
 
 ```text
 toobit-bot/
+
 |
+
 ├── server_v3.js
 │   └── Main Express server / TradingView webhook receiver
+
 |
+
 ├── config/
 │   └── config.js
 │       └── Central configuration and environment variables
+
 |
+
 ├── weex/
 │   └── weex.js
 │       └── WEEX API communication and execution
+
 |
+
 ├── filters/
 │   └── orderBook.js
 │       └── Order-book analysis and entry filtering
+
 |
+
 ├── trading/
 │   └── trading.js
 │       └── Signal processing, position logic and statistics
+
 |
+
 ├── utils/
 │   └── logger.js
 │       └── Console/log helpers
+
 |
+
 ├── .env
 │   └── API credentials and runtime configuration
+
 |
+
 └── README.md
     └── Project documentation
 ```
@@ -124,7 +161,8 @@ It is responsible for:
 * exposing symbol information;
 * exposing manual trading endpoints;
 * exposing read-only order-book testing;
-* loading available WEEX USDT-M contracts at startup.
+* loading available WEEX USDT-M contracts at startup;
+* running the automatic managed-symbol trading cycle.
 
 ## Architecture Rule
 
@@ -148,19 +186,33 @@ The intended webhook flow is:
 
 ```text
 TradingView
+
     |
+
     v
+
 POST /webhook
+
     |
+
     +----> Immediate HTTP 200
+
     |
+
     v
+
 Background processing
+
     |
+
     v
+
 trading.js
+
     |
+
     v
+
 WEEX
 ```
 
@@ -178,9 +230,13 @@ The bot supports the following trading actions:
 
 ```text
 LONG
+
 SHORT
+
 CLOSE
+
 CLOSE_LONG
+
 CLOSE_SHORT
 ```
 
@@ -202,16 +258,34 @@ Important configuration values include:
 TRADING_ENABLED
 
 DEFAULT_MARGIN
+
 DEFAULT_LEVERAGE
+
 REQUIRED_MARGIN_MODE
 
 ORDER_BOOK_DEPTH
 
 LONG_MIN_IMBALANCE
+
 SHORT_MAX_IMBALANCE
 
 MIN_BID_ASK_RATIO
+
 MIN_ASK_BID_RATIO
+
+ORDER_BOOK_CONFIRMATION_REQUIRED
+```
+
+The current multi-depth confirmation configuration is:
+
+```text
+ORDER_BOOK_DEPTH = 200
+
+CONFIRMATION_DEPTHS = 15, 20, 30, 60
+
+ORDER_BOOK_CONFIRMATION_REQUIRED = 3
+
+CONFIRMATION_RULE = 3_OF_4
 ```
 
 WEEX API credentials are loaded through environment configuration.
@@ -224,7 +298,9 @@ The position-sizing model is:
 
 ```text
 Target Notional
+
     =
+
 DEFAULT_MARGIN × DEFAULT_LEVERAGE
 ```
 
@@ -232,7 +308,9 @@ Then:
 
 ```text
 Raw Quantity
+
     =
+
 Target Notional / Current Price
 ```
 
@@ -246,7 +324,9 @@ Current execution configuration is:
 
 ```text
 Margin Mode = ISOLATED
+
 Leverage    = configured value
+
 Margin      = configured value
 ```
 
@@ -254,7 +334,9 @@ Changing the following values is considered an explicit trading-risk change:
 
 ```text
 DEFAULT_MARGIN
+
 DEFAULT_LEVERAGE
+
 REQUIRED_MARGIN_MODE
 ```
 
@@ -305,8 +387,11 @@ Authenticated requests use the WEEX API credentials:
 
 ```text
 ACCESS-KEY
+
 ACCESS-SIGN
+
 ACCESS-PASSPHRASE
+
 ACCESS-TIMESTAMP
 ```
 
@@ -326,7 +411,9 @@ Typical credentials include:
 
 ```text
 API_KEY
+
 API_SECRET
+
 API_PASSPHRASE
 ```
 
@@ -347,16 +434,27 @@ The startup process is:
 
 ```text
 WEEX exchangeInfo
+
        |
+
        v
+
 USDT quote/margin contracts
+
        |
+
        v
+
 Optional apiTradingSymbols validation
+
        |
+
        v
+
 SUPPORTED_SYMBOLS
+
        +
+
 CONTRACT_INFO
 ```
 
@@ -374,7 +472,9 @@ TradingView may send symbols in formats such as:
 
 ```text
 SPXUSDT.P
+
 FARTCOINUSDT.P
+
 BINANCE:BTCUSDT.P
 ```
 
@@ -382,7 +482,9 @@ The bot normalizes these into the WEEX-compatible format:
 
 ```text
 SPXUSDT
+
 FARTCOINUSDT
+
 BTCUSDT
 ```
 
@@ -398,15 +500,23 @@ Position sizing follows this general process:
 
 ```text
 Target Notional
+
     =
+
 Configured Margin × Configured Leverage
 
+
 Raw Quantity
+
     =
+
 Target Notional / Current Price
 
+
 Final Quantity
+
     =
+
 Raw Quantity adjusted/floored to WEEX step size
 ```
 
@@ -422,12 +532,19 @@ The resulting calculation contains information such as:
 
 ```text
 margin
+
 leverage
+
 targetNotional
+
 rawQuantity
+
 quantity
+
 actualNotional
+
 actualMargin
+
 stepSize
 ```
 
@@ -445,20 +562,35 @@ The intended behavior is:
 
 ```text
 First Order Attempt
+
         |
+
         v
+
 WEEX rejects due to stepSize
+
         |
+
         v
+
 Extract stepSize from WEEX error
+
         |
+
         v
+
 Update CONTRACT_INFO[symbol]
+
         |
+
         v
+
 Recalculate quantity
+
         |
+
         v
+
 Retry once
 ```
 
@@ -500,6 +632,7 @@ For example:
 
 ```text
 Required = ISOLATED
+
 Current  = CROSS
 ```
 
@@ -541,21 +674,62 @@ The current architecture is:
 
 ```text
 TradingView LONG/SHORT
+
         |
+
         v
+
 trading.js
+
         |
+
         v
-checkOrderBook()
+
+Order-Book Analysis
+
         |
+
         v
+
 weex.getOrderBook()
+
         |
+
         v
+
 WEEX REST market/depth
 ```
 
 The order-book check uses a fresh market-depth request when an entry is evaluated.
+
+The current confirmation system uses **one fresh 200-level order-book snapshot** and derives the required confirmation depths from that same snapshot.
+
+This is important.
+
+The bot should not unnecessarily request four separate order books for:
+
+```text
+15
+20
+30
+60
+```
+
+Instead:
+
+```text
+ONE 200-LEVEL SNAPSHOT
+
+        |
+
+        +----> 15 levels
+
+        +----> 20 levels
+
+        +----> 30 levels
+
+        +----> 60 levels
+```
 
 Do not describe an old WebSocket implementation as the active execution path unless it is actually restored in the code.
 
@@ -569,15 +743,19 @@ It calculates:
 
 ```text
 Bid Liquidity
+
 Ask Liquidity
+
 Total Liquidity
 
 Bid Percentage
+
 Ask Percentage
 
 Imbalance
 
 Bid/Ask Ratio
+
 Ask/Bid Ratio
 ```
 
@@ -585,7 +763,9 @@ The imbalance formula is:
 
 ```text
                  Bid Liquidity - Ask Liquidity
+
 Imbalance = -----------------------------------------
+
                  Bid Liquidity + Ask Liquidity
 ```
 
@@ -593,7 +773,9 @@ Interpretation:
 
 ```text
 +1  = extreme bid dominance
+
  0  = balanced
+
 -1  = extreme ask dominance
 ```
 
@@ -609,7 +791,7 @@ Negative imbalance = ask pressure
 
 # 19. LONG Order-Book Filter
 
-For a LONG signal, both conditions must pass:
+For a LONG signal, each confirmation depth requires both conditions to pass:
 
 ```text
 imbalance >= LONG_MIN_IMBALANCE
@@ -619,17 +801,19 @@ AND
 bidAskRatio >= MIN_BID_ASK_RATIO
 ```
 
-If both pass:
+If both conditions pass at a specific depth:
 
 ```text
-ORDER_BOOK_SUPPORTS_LONG
+LONG DEPTH CONFIRMATION = PASS
 ```
 
 If either condition fails:
 
 ```text
-ORDER_BOOK_DOES_NOT_SUPPORT_LONG
+LONG DEPTH CONFIRMATION = FAIL
 ```
+
+The final LONG entry decision uses the multi-depth confirmation system described in Section 21.
 
 The returned filter result should also contain the relevant raw measurements and individual pass/fail information.
 
@@ -637,7 +821,7 @@ The returned filter result should also contain the relevant raw measurements and
 
 # 20. SHORT Order-Book Filter
 
-For a SHORT signal, both conditions must pass:
+For a SHORT signal, each confirmation depth requires both conditions to pass:
 
 ```text
 imbalance <= SHORT_MAX_IMBALANCE
@@ -647,23 +831,155 @@ AND
 askBidRatio >= MIN_ASK_BID_RATIO
 ```
 
-If both pass:
+If both conditions pass at a specific depth:
 
 ```text
-ORDER_BOOK_SUPPORTS_SHORT
+SHORT DEPTH CONFIRMATION = PASS
 ```
 
 If either condition fails:
 
 ```text
-ORDER_BOOK_DOES_NOT_SUPPORT_SHORT
+SHORT DEPTH CONFIRMATION = FAIL
 ```
+
+The final SHORT entry decision uses the multi-depth confirmation system described in Section 21.
 
 The returned result should contain the relevant measurements and pass/fail information.
 
 ---
 
-# 21. Order-Book Filter Is an Entry Gate
+# 21. Multi-Depth Order-Book Confirmation
+
+The current V3 order-book confirmation system uses four depth levels:
+
+```text
+15 levels
+
+20 levels
+
+30 levels
+
+60 levels
+```
+
+The four depth calculations are derived from **one fresh 200-level WEEX order-book snapshot**.
+
+The structure is:
+
+```text
+ONE 200-LEVEL SNAPSHOT
+
+        |
+
+        +----> 15 LEVEL TEST
+
+        +----> 20 LEVEL TEST
+
+        +----> 30 LEVEL TEST
+
+        +----> 60 LEVEL TEST
+```
+
+Each depth is evaluated independently.
+
+A depth only passes when **both** the imbalance and ratio requirements pass.
+
+For LONG:
+
+```text
+Imbalance Test = PASS
+AND
+Bid/Ask Ratio Test = PASS
+
+        |
+
+        v
+
+Depth Confirmation = PASS
+```
+
+For SHORT:
+
+```text
+Imbalance Test = PASS
+AND
+Ask/Bid Ratio Test = PASS
+
+        |
+
+        v
+
+Depth Confirmation = PASS
+```
+
+The final entry requirement is:
+
+```text
+3 OF 4 DEPTHS MUST PASS
+```
+
+Therefore:
+
+```text
+15 PASS
+20 PASS
+30 FAIL
+60 PASS
+
+        |
+
+        v
+
+3 / 4 PASS
+
+        |
+
+        v
+
+ENTRY ALLOWED
+```
+
+Another example:
+
+```text
+15 PASS
+20 FAIL
+30 FAIL
+60 PASS
+
+        |
+
+        v
+
+2 / 4 PASS
+
+        |
+
+        v
+
+ENTRY BLOCKED
+```
+
+The current confirmation configuration is:
+
+```text
+CONFIRMATION_DEPTHS = [15, 20, 30, 60]
+
+CONFIRMATION_REQUIRED = 3
+
+CONFIRMATION_RULE = 3_OF_4
+```
+
+The confirmation logic must remain centralized where possible.
+
+Avoid hard-coding different depth arrays in multiple modules.
+
+If a depth configuration changes in the future, update the central configuration and all dependent reporting/output fields together.
+
+---
+
+# 22. Order-Book Filter Is an Entry Gate
 
 The order-book filter is **not the trading strategy**.
 
@@ -671,26 +987,47 @@ The architecture is:
 
 ```text
 TradingView / Pine
+
         |
+
         | LONG / SHORT / CLOSE
+
         v
+
 TradingView Webhook
+
         |
+
         v
+
 server_v3.js
+
         |
+
         v
+
 trading.js
+
         |
+
         | Entry?
+
         v
+
 orderBook.js
+
         |
+
         | PASS / BLOCK
+
         v
+
 weex.js
+
         |
+
         v
+
 WEEX
 ```
 
@@ -700,7 +1037,7 @@ The order-book filter only acts as an additional execution gate for new LONG/SHO
 
 ---
 
-# 22. CLOSE Safety
+# 23. CLOSE Safety
 
 CLOSE actions are never filtered through the order book.
 
@@ -708,7 +1045,9 @@ Supported close actions:
 
 ```text
 CLOSE
+
 CLOSE_LONG
+
 CLOSE_SHORT
 ```
 
@@ -728,7 +1067,7 @@ Closing risk takes priority over entry filtering.
 
 ---
 
-# 23. trading/trading.js
+# 24. trading/trading.js
 
 ## Role
 
@@ -745,6 +1084,7 @@ It handles:
 * same-direction suppression;
 * reversals;
 * fresh order-book checks;
+* multi-depth confirmation;
 * position confirmation;
 * per-symbol concurrency locks;
 * order-book statistics.
@@ -753,7 +1093,7 @@ It orchestrates the trading process but does not contain the low-level WEEX API 
 
 ---
 
-# 24. Real WEEX Position Is the Source of Truth
+# 25. Real WEEX Position Is the Source of Truth
 
 The bot checks the actual WEEX position before making execution decisions.
 
@@ -767,7 +1107,9 @@ The exchange position is interpreted as:
 
 ```text
 FLAT
+
 LONG
+
 SHORT
 ```
 
@@ -792,17 +1134,23 @@ This protects against:
 
 ---
 
-# 25. Same-Direction Behavior
+# 26. Same-Direction Behavior
 
 If TradingView sends LONG while WEEX is already LONG:
 
 ```text
 LONG signal
+
     |
+
     v
+
 WEEX position = LONG
+
     |
+
     v
+
 NO ACTION
 ```
 
@@ -812,11 +1160,17 @@ Likewise:
 
 ```text
 SHORT signal
+
     |
+
     v
+
 WEEX position = SHORT
+
     |
+
     v
+
 NO ACTION
 ```
 
@@ -824,40 +1178,81 @@ This prevents duplicate same-direction entries caused by repeated TradingView al
 
 ---
 
-# 26. Flat → Entry Behavior
+# 27. Flat → Entry Behavior
 
 When WEEX reports FLAT and TradingView sends a LONG or SHORT signal:
 
 ```text
 TradingView Signal
+
         |
+
         v
+
 Confirm FLAT
+
         |
+
         v
-Fresh Order-Book Check
+
+Fresh 200-Level Order-Book Snapshot
+
         |
+
+        v
+
+Evaluate 15 / 20 / 30 / 60 Levels
+
+        |
+
+        v
+
+Require 3 of 4 Confirmations
+
+        |
+
         +---- BLOCKED
+
         |       |
+
         |       v
+
         |    Remain FLAT
+
         |
+
         v
+
 Check Balance
+
         |
+
         v
+
 Get Current Price
+
         |
+
         v
+
 Calculate Quantity
+
         |
+
         v
+
 Ensure Leverage / Margin Configuration
+
         |
+
         v
+
 Place MARKET Order
+
         |
+
         v
+
 Confirm WEEX Position
 ```
 
@@ -865,7 +1260,7 @@ The position is only considered successfully opened after WEEX confirms the requ
 
 ---
 
-# 27. Reversal Behavior
+# 28. Reversal Behavior
 
 Reversals are intentionally handled in two stages.
 
@@ -875,25 +1270,57 @@ Correct sequence:
 
 ```text
 CURRENT POSITION
+
         |
+
         v
+
 CLOSE OLD POSITION
+
         |
+
         v
+
 WAIT FOR WEEX = FLAT
+
         |
+
         v
-FRESH ORDER-BOOK CHECK
+
+FRESH 200-LEVEL ORDER-BOOK SNAPSHOT
+
         |
+
+        v
+
+Evaluate 15 / 20 / 30 / 60
+
+        |
+
+        v
+
+Require 3 of 4 Confirmations
+
+        |
+
         +---- BLOCKED
+
         |       |
+
         |       v
+
         |    REMAIN FLAT
+
         |
+
         v
+
 OPEN NEW DIRECTION
+
         |
+
         v
+
 WAIT FOR WEEX = NEW DIRECTION
 ```
 
@@ -901,6 +1328,7 @@ Example:
 
 ```text
 Current Position = LONG
+
 Incoming Signal  = SHORT
 ```
 
@@ -908,22 +1336,39 @@ The bot performs:
 
 ```text
 LONG
+
  |
+
  v
+
 CLOSE LONG
+
  |
+
  v
+
 CONFIRM FLAT
+
  |
+
  v
+
 FRESH SHORT ORDER-BOOK CHECK
+
  |
+
  +---- BLOCKED -> Remain FLAT
+
  |
+
  v
+
 OPEN SHORT
+
  |
+
  v
+
 CONFIRM SHORT
 ```
 
@@ -933,7 +1378,7 @@ Do not change this sequence casually.
 
 ---
 
-# 28. Reversal + Order-Book Blocking
+# 29. Reversal + Order-Book Blocking
 
 A reversal can intentionally finish with no position.
 
@@ -941,6 +1386,7 @@ Example:
 
 ```text
 Current = LONG
+
 Signal  = SHORT
 ```
 
@@ -948,14 +1394,37 @@ Process:
 
 ```text
 CLOSE LONG
+
      |
+
      v
+
 CONFIRM FLAT
+
      |
+
      v
+
 SHORT order-book check
+
      |
+
      v
+
+Evaluate:
+
+15 / 20 / 30 / 60
+
+     |
+
+     v
+
+3 of 4 required
+
+     |
+
+     v
+
 BLOCKED
 ```
 
@@ -973,7 +1442,7 @@ This behavior is intentional.
 
 ---
 
-# 29. Per-Symbol Trading Locks
+# 30. Per-Symbol Trading Locks
 
 The trading controller uses a lock per symbol.
 
@@ -995,7 +1464,7 @@ A BTCUSDT operation must not unnecessarily block MINAUSDT or SOLUSDT.
 
 ---
 
-# 30. Order-Book Statistics
+# 31. Order-Book Statistics
 
 `trading.js` maintains in-memory statistics for order-book filtering.
 
@@ -1003,15 +1472,21 @@ Global statistics include:
 
 ```text
 total
+
 accepted
+
 rejected
 
 long.checked
+
 long.accepted
+
 long.rejected
 
 short.checked
+
 short.accepted
+
 short.rejected
 
 reasons
@@ -1034,6 +1509,8 @@ How many SHORT signals were checked?
 
 How many SHORT signals passed?
 
+How many SHORT signals were blocked?
+
 Which rejection reason caused the blocks?
 
 Which symbols are being blocked most frequently?
@@ -1053,23 +1530,47 @@ They should not be treated as permanent historical trading statistics.
 
 ---
 
-# 31. Order-Book Rejection Behavior
+# 32. Order-Book Rejection Behavior
 
 For a FLAT entry:
 
 ```text
 TradingView Signal
+
         |
+
         v
-Order-Book Check
+
+200-Level Order-Book Snapshot
+
         |
+
         v
+
+15 / 20 / 30 / 60 Evaluation
+
+        |
+
+        v
+
+3-of-4 Confirmation
+
+        |
+
+        v
+
 BLOCK
+
         |
+
         v
+
 No Opening Order
+
         |
+
         v
+
 Remain FLAT
 ```
 
@@ -1079,26 +1580,53 @@ For a reversal:
 
 ```text
 Existing Position
+
         |
+
         v
+
 CLOSE
+
         |
+
         v
+
 CONFIRM FLAT
+
         |
+
         v
-Order-Book Check
+
+Fresh 200-Level Order-Book Snapshot
+
         |
+
         v
+
+15 / 20 / 30 / 60
+
+        |
+
+        v
+
+3-of-4 Confirmation
+
+        |
+
+        v
+
 BLOCK
+
         |
+
         v
+
 Remain FLAT
 ```
 
 ---
 
-# 32. Typical LONG Entry REST Flow
+# 33. Typical LONG Entry REST Flow
 
 A normal LONG entry can involve requests such as:
 
@@ -1114,12 +1642,32 @@ GET  /capi/v3/market/ticker/bookTicker
 GET  /capi/v3/account/symbolConfig
 
 POST /capi/v3/account/leverage
+
      # only when necessary
 
 POST /capi/v3/order
+
      # MARKET open
 
 GET  /capi/v3/account/position/singlePosition
+```
+
+The order-book request should provide enough depth for the current confirmation system:
+
+```text
+WEEX REQUEST DEPTH = 200
+```
+
+The confirmation levels are derived from that snapshot:
+
+```text
+15
+
+20
+
+30
+
+60
 ```
 
 The exact sequence can vary depending on:
@@ -1135,7 +1683,7 @@ Closing uses the live position and a reduce-only MARKET order.
 
 ---
 
-# 33. Manual Trading Endpoints
+# 34. Manual Trading Endpoints
 
 The V3 server exposes manual execution endpoints.
 
@@ -1163,7 +1711,7 @@ Use them intentionally because they can create real trades.
 
 ---
 
-# 34. Read-Only Order-Book Testing
+# 35. Read-Only Order-Book Testing
 
 The bot provides read-only order-book testing:
 
@@ -1181,7 +1729,9 @@ It must:
 
 * retrieve order-book data;
 * calculate the filter;
-* report the result;
+* evaluate 15/20/30/60;
+* report individual depth results;
+* report the 3-of-4 confirmation result;
 
 but it must **never**:
 
@@ -1190,9 +1740,35 @@ but it must **never**:
 * reverse a position;
 * place any trading order.
 
+A useful response should expose information similar to:
+
+```text
+depth15
+
+depth20
+
+depth30
+
+depth60
+
+passedDepths
+
+failedDepths
+
+passedCount
+
+confirmationRequired
+
+confirmationPassed
+
+confirmationRule
+```
+
+This makes the endpoint useful for tuning and debugging without risking a trade.
+
 ---
 
-# 35. Status Endpoint
+# 36. Status Endpoint
 
 The main status endpoint is:
 
@@ -1204,7 +1780,7 @@ It is intended to provide information about the running V3 server and its curren
 
 ---
 
-# 36. Current Position Endpoint
+# 37. Current Position Endpoint
 
 The current position can be checked through:
 
@@ -1216,7 +1792,7 @@ The response should reflect the actual WEEX account position rather than a local
 
 ---
 
-# 37. Supported Symbols Endpoint
+# 38. Supported Symbols Endpoint
 
 Available/discovered symbols can be checked through:
 
@@ -1228,7 +1804,7 @@ This reflects the current contract discovery state.
 
 ---
 
-# 38. Refresh Contracts
+# 39. Refresh Contracts
 
 The contract list can be refreshed through:
 
@@ -1240,7 +1816,7 @@ This allows the bot to update its supported-symbol and contract-information stat
 
 ---
 
-# 39. Order-Book Debugging
+# 40. Order-Book Debugging
 
 When an entry is blocked, inspect the actual measurements.
 
@@ -1249,7 +1825,9 @@ Important values include:
 ```text
 Direction
 
-Depth Levels
+Snapshot Depth
+
+Confirmation Depth
 
 Best Bid
 
@@ -1268,9 +1846,27 @@ Imbalance
 Bid/Ask Ratio
 
 Ask/Bid Ratio
+
+Imbalance Test
+
+Ratio Test
+
+Depth Confirmation
 ```
 
-For LONG:
+The current confirmation depths are:
+
+```text
+15
+
+20
+
+30
+
+60
+```
+
+For LONG at each depth:
 
 ```text
 imbalance >= LONG_MIN_IMBALANCE
@@ -1280,7 +1876,7 @@ AND
 bidAskRatio >= MIN_BID_ASK_RATIO
 ```
 
-For SHORT:
+For SHORT at each depth:
 
 ```text
 imbalance <= SHORT_MAX_IMBALANCE
@@ -1288,6 +1884,40 @@ imbalance <= SHORT_MAX_IMBALANCE
 AND
 
 askBidRatio >= MIN_ASK_BID_RATIO
+```
+
+Then:
+
+```text
+Depth Pass
+
+    =
+
+Imbalance Pass
+
+AND
+
+Ratio Pass
+```
+
+Finally:
+
+```text
+Passed Depths >= 3
+
+    =
+
+Entry Allowed
+```
+
+Otherwise:
+
+```text
+Passed Depths < 3
+
+    =
+
+Entry Blocked
 ```
 
 Do not evaluate the filter only from:
@@ -1302,7 +1932,7 @@ This makes it possible to determine exactly why an entry was rejected.
 
 ---
 
-# 40. Order-Book Threshold Tuning
+# 41. Order-Book Threshold Tuning
 
 The order-book filter is an additional execution filter.
 
@@ -1314,9 +1944,13 @@ For example:
 
 ```text
 Very high rejection rate
+
         |
+
         +---- Could mean strong filtering
+
         |
+
         +---- Could also mean valid setups are being discarded
 ```
 
@@ -1324,15 +1958,25 @@ The correct evaluation should compare:
 
 ```text
 TradingView Signals
+
         |
+
         +---- Accepted
+
         |
+
         +---- Rejected
+
         |
+
         +---- Resulting Trades
+
         |
+
         +---- Wins
+
         |
+
         +---- Losses
 ```
 
@@ -1350,9 +1994,23 @@ Minimum acceptance
 
 The goal is better trade quality without unnecessarily destroying valid TradingView setups.
 
+The multi-depth system adds a second dimension to the evaluation:
+
+```text
+15 / 20 / 30 / 60
+
+        |
+
+        v
+
+3 OF 4 REQUIRED
+```
+
+The purpose is to avoid making an entry decision from only one depth.
+
 ---
 
-# 41. A/B Testing Order-Book Settings
+# 42. A/B Testing Order-Book Settings
 
 When tuning the order-book filter, change one parameter at a time.
 
@@ -1360,11 +2018,13 @@ Example:
 
 ```text
 Test A
+
 Current settings
 
 vs.
 
 Test B
+
 Change ONE threshold
 ```
 
@@ -1400,6 +2060,18 @@ SHORT_MAX_IMBALANCE
 MIN_BID_ASK_RATIO
 
 MIN_ASK_BID_RATIO
+
+CONFIRMATION_DEPTHS
+
+ORDER_BOOK_CONFIRMATION_REQUIRED
+```
+
+Current confirmation settings are:
+
+```text
+CONFIRMATION_DEPTHS = [15, 20, 30, 60]
+
+ORDER_BOOK_CONFIRMATION_REQUIRED = 3
 ```
 
 Changing these values is an explicit strategy/filter change.
@@ -1408,23 +2080,29 @@ They should not be modified silently during unrelated code work.
 
 ---
 
-# 42. Strategy vs Execution Boundary
+# 43. Strategy vs Execution Boundary
 
 The project has a strict separation between signal generation and execution.
 
 ```text
 TRADINGVIEW / PINE
+
 ------------------
 
 Generates:
+
 LONG
+
 SHORT
+
 CLOSE
 
         |
+
         v
 
 WEEX BOT
+
 --------
 
 Validates signal
@@ -1436,7 +2114,16 @@ Checks live WEEX position
         |
 
 For LONG/SHORT:
+
 Checks order book
+
+        |
+
+Evaluates 15 / 20 / 30 / 60
+
+        |
+
+Requires 3 of 4
 
         |
 
@@ -1467,22 +2154,33 @@ The order-book filter is part of the execution/safety layer.
 
 ---
 
-# 43. Current Architecture
+# 44. Current Architecture
 
 The current baseline architecture is:
 
 ```text
 server_v3.js
+
       |
+
       v
+
 trading/trading.js
+
       |
+
       +--------------------+
+
       |                    |
+
       v                    v
+
 filters/orderBook.js    weex/weex.js
+
                               |
+
                               v
+
                            WEEX API
 ```
 
@@ -1490,33 +2188,50 @@ Responsibilities remain separated:
 
 ```text
 server_v3.js
+
     =
+
 HTTP + webhook layer
 
+
 trading.js
+
     =
+
 Signal orchestration + position logic + statistics
 
+
 orderBook.js
+
     =
-Order-book analysis
+
+Order-book analysis + multi-depth confirmation
+
 
 weex.js
+
     =
+
 WEEX API + execution
 
+
 config.js
+
     =
+
 Configuration
 
+
 logger.js
+
     =
+
 Logging
 ```
 
 ---
 
-# 44. V3 Safety Rules
+# 45. V3 Safety Rules
 
 These rules must be preserved during future development.
 
@@ -1538,13 +2253,29 @@ Always:
 
 ```text
 CLOSE
+
   ->
+
 CONFIRM FLAT
+
   ->
-FRESH ORDER-BOOK CHECK
+
+FRESH 200-LEVEL ORDER-BOOK SNAPSHOT
+
   ->
+
+15 / 20 / 30 / 60
+
+  ->
+
+3 OF 4 CONFIRMATION
+
+  ->
+
 OPEN
+
   ->
+
 CONFIRM NEW DIRECTION
 ```
 
@@ -1588,7 +2319,9 @@ Treat these as explicit risk changes:
 
 ```text
 DEFAULT_MARGIN
+
 DEFAULT_LEVERAGE
+
 REQUIRED_MARGIN_MODE
 ```
 
@@ -1600,10 +2333,26 @@ Treat these as explicit strategy/filter changes:
 
 ```text
 ORDER_BOOK_DEPTH
+
 LONG_MIN_IMBALANCE
+
 SHORT_MAX_IMBALANCE
+
 MIN_BID_ASK_RATIO
+
 MIN_ASK_BID_RATIO
+
+CONFIRMATION_DEPTHS
+
+ORDER_BOOK_CONFIRMATION_REQUIRED
+```
+
+Current confirmation settings:
+
+```text
+CONFIRMATION_DEPTHS = [15, 20, 30, 60]
+
+ORDER_BOOK_CONFIRMATION_REQUIRED = 3
 ```
 
 ---
@@ -1629,7 +2378,34 @@ Do not assume an endpoint behaves differently without evidence.
 
 ---
 
-# 45. Development Principles
+## Rule 13 — Use one order-book snapshot for confirmation
+
+The 15, 20, 30 and 60 level tests should be derived from the same fresh 200-level snapshot.
+
+Do not unnecessarily request separate snapshots for each confirmation depth.
+
+---
+
+## Rule 14 — Preserve 3-of-4 confirmation
+
+New LONG/SHORT entries require:
+
+```text
+3 of 4
+
+15
+20
+30
+60
+```
+
+A single passing depth is not sufficient.
+
+A 2-of-4 result is not sufficient.
+
+---
+
+# 46. Development Principles
 
 Future code changes should follow these principles:
 
@@ -1671,11 +2447,15 @@ Future code changes should follow these principles:
 
 19. Prefer a testable incremental change over a complete rewrite.
 
-20. Update this README whenever an intentional major behavior or architectural change is introduced.
+20. Keep all four confirmation depths derived from one 200-level snapshot.
+
+21. Preserve the 3-of-4 confirmation rule.
+
+22. Update this README whenever an intentional major behavior or architectural change is introduced.
 
 ---
 
-# 46. Recommended Testing Workflow
+# 47. Recommended Testing Workflow
 
 After making a code change:
 
@@ -1692,18 +2472,30 @@ After making a code change:
 
 6. Test /test-orderbook first.
 
-7. Test /position.
+7. Verify:
 
-8. Test manual endpoints only when intentionally required.
+   15 levels
 
-9. Review logs.
+   20 levels
 
-10. Only then allow TradingView live signals.
+   30 levels
+
+   60 levels
+
+8. Confirm the 3-of-4 decision.
+
+9. Test /position.
+
+10. Test manual endpoints only when intentionally required.
+
+11. Review logs.
+
+12. Only then allow TradingView live signals.
 ```
 
 ---
 
-# 47. JavaScript Syntax Checks
+# 48. JavaScript Syntax Checks
 
 Recommended checks:
 
@@ -1727,7 +2519,7 @@ For important changes, check all V3 JavaScript files.
 
 ---
 
-# 48. Debugging Philosophy
+# 49. Debugging Philosophy
 
 When something does not behave as expected, do not immediately rewrite the system.
 
@@ -1748,119 +2540,212 @@ First determine:
 
 7. What order-book values were returned?
 
-8. Why did the filter pass or fail?
+8. What happened at 15 levels?
 
-9. Was balance sufficient?
+9. What happened at 20 levels?
 
-10. What quantity was calculated?
+10. What happened at 30 levels?
 
-11. Was leverage/margin configuration valid?
+11. What happened at 60 levels?
 
-12. What did WEEX return?
+12. How many confirmations passed?
 
-13. What position did WEEX report after execution?
+13. Why did the final 3-of-4 filter pass or fail?
+
+14. Was balance sufficient?
+
+15. What quantity was calculated?
+
+16. Was leverage/margin configuration valid?
+
+17. What did WEEX return?
+
+18. What position did WEEX report after execution?
 ```
 
 The actual logs should be used to identify the failing layer before changing code.
 
 ---
 
-# 49. Typical Entry Decision Tree
+# 50. Typical Entry Decision Tree
 
 For a new LONG or SHORT signal:
 
 ```text
 TradingView Signal
+
         |
+
         v
+
 Normalize Symbol
+
         |
+
         v
+
 Validate Symbol
+
         |
+
         v
+
 Check WEEX Position
+
         |
+
         +---- Same Direction
+
         |         |
+
         |         v
+
         |      NO ACTION
+
         |
+
         +---- Opposite Direction
+
         |         |
+
         |         v
+
         |      CLOSE OLD
+
         |         |
+
         |         v
+
         |      CONFIRM FLAT
+
         |
+
         v
-Fresh Order-Book Check
+
+Fresh 200-Level Order-Book Snapshot
+
         |
+
+        v
+
+Evaluate 15 / 20 / 30 / 60
+
+        |
+
+        v
+
+Require 3 of 4
+
+        |
+
         +---- BLOCK
+
         |       |
+
         |       v
+
         |    NO ENTRY
+
         |
+
         v
+
 Check Balance
+
         |
+
         v
+
 Get Price
+
         |
+
         v
+
 Calculate Quantity
+
         |
+
         v
+
 Ensure Leverage / Margin
+
         |
+
         v
+
 Place MARKET Order
+
         |
+
         v
+
 Confirm WEEX Position
 ```
 
 ---
 
-# 50. Typical CLOSE Decision
+# 51. Typical CLOSE Decision
 
 For a CLOSE action:
 
 ```text
 TradingView CLOSE
+
         |
+
         v
+
 Check WEEX Position
+
         |
+
         v
+
 Position exists?
+
         |
+
         +---- NO
+
         |      |
+
         |      v
+
         |   Nothing to close
+
         |
+
         v
+
 Place Reduce-Only MARKET Close
+
         |
+
         v
+
 Wait for WEEX
+
         |
+
         v
+
 Confirm FLAT
 ```
 
 The order-book filter is not involved.
 
+No 15/20/30/60 confirmation is required for a CLOSE.
+
 ---
 
-# 51. Typical Reversal Decision
+# 52. Typical Reversal Decision
 
 For:
 
 ```text
 Current = LONG
+
 Signal  = SHORT
 ```
 
@@ -1868,6 +2753,7 @@ or:
 
 ```text
 Current = SHORT
+
 Signal  = LONG
 ```
 
@@ -1880,28 +2766,32 @@ the sequence is:
 
 3. Wait until WEEX reports FLAT.
 
-4. Request a fresh order book.
+4. Request one fresh 200-level order book.
 
-5. Apply the new-direction filter.
+5. Evaluate 15 / 20 / 30 / 60.
 
-6. If blocked:
+6. Apply the 3-of-4 confirmation rule.
+
+7. If blocked:
+
       remain FLAT.
 
-7. If accepted:
+8. If accepted:
+
       calculate quantity.
 
-8. Verify leverage/margin.
+9. Verify leverage/margin.
 
-9. Open new direction.
+10. Open new direction.
 
-10. Confirm new WEEX position.
+11. Confirm new WEEX position.
 ```
 
 No step should be skipped casually.
 
 ---
 
-# 52. Important Difference Between Entry and Close
+# 53. Important Difference Between Entry and Close
 
 The system intentionally treats entries and exits differently.
 
@@ -1909,15 +2799,33 @@ The system intentionally treats entries and exits differently.
 ENTRY
 
 Signal
+
   |
+
 Order Book
+
   |
+
+15 / 20 / 30 / 60
+
+  |
+
+3 OF 4
+
+  |
+
 Balance
+
   |
+
 Quantity
+
   |
+
 Leverage
+
   |
+
 Open
 ```
 
@@ -1927,11 +2835,17 @@ Whereas:
 CLOSE
 
 Signal
+
   |
+
 Live Position
+
   |
+
 Reduce-Only Close
+
   |
+
 Confirm FLAT
 ```
 
@@ -1947,7 +2861,7 @@ The bot must not prevent an exit because the current order book is unfavorable.
 
 ---
 
-# 53. Order-Book Statistics Interpretation
+# 54. Order-Book Statistics Interpretation
 
 Order-book statistics should be used as a diagnostic tool.
 
@@ -1955,8 +2869,11 @@ Example:
 
 ```text
 Total Signals:       157
+
 Accepted:              6
+
 Rejected:            151
+
 Acceptance Rate:    3.82%
 ```
 
@@ -1978,28 +2895,77 @@ rather than:
 Did the filter block many trades?
 ```
 
+With the current multi-depth system, additional diagnostic information should include:
+
+```text
+15-level pass rate
+
+20-level pass rate
+
+30-level pass rate
+
+60-level pass rate
+
+3-of-4 acceptance rate
+```
+
+This makes it possible to determine whether one specific depth is causing most of the filtering.
+
 ---
 
-# 54. Logging Requirements
+# 55. Logging Requirements
 
 Useful logs should make it possible to determine:
 
 ```text
 Signal
+
 Symbol
+
 Normalized Symbol
+
 Current Position
+
 Requested Direction
 
 Order-Book Direction
+
+Snapshot Depth
+
+Confirmation Depths
+
+15-Level Result
+
+20-Level Result
+
+30-Level Result
+
+60-Level Result
+
+Passed Depths
+
+Failed Depths
+
+Passed Count
+
+Required Count
+
+Confirmation Decision
+
 Order-Book Measurements
+
 Order-Book Decision
 
 Balance
+
 Price
+
 Quantity
+
 Notional
+
 Margin
+
 Leverage
 
 WEEX Order Result
@@ -2023,51 +2989,106 @@ ORDER_BOOK_DOES_NOT_SUPPORT_SHORT
 
 The raw measurements should be available for debugging.
 
+For multi-depth filtering, the log should also make the confirmation decision obvious.
+
+Example:
+
+```text
+LONG ORDER BOOK
+
+15 = PASS
+20 = PASS
+30 = FAIL
+60 = PASS
+
+CONFIRMATION = 3/4
+
+DECISION = ALLOW
+```
+
+Or:
+
+```text
+SHORT ORDER BOOK
+
+15 = PASS
+20 = FAIL
+30 = FAIL
+60 = PASS
+
+CONFIRMATION = 2/4
+
+DECISION = BLOCK
+```
+
 ---
 
-# 55. What Future AI/code Changes Must Not Do
+# 56. What Future AI/code Changes Must Not Do
 
 Future modifications must not casually:
 
 ```text
 - replace WEEX position checks with local state;
+
 - remove per-symbol locks;
+
 - add a global trading lock;
+
 - filter CLOSE through order book;
+
 - open the new direction before closing the old one;
+
 - remove reversal confirmation;
+
 - remove step-size retry;
+
 - replace automatic contract discovery with a static list;
+
 - move HMAC signing into trading.js;
+
 - move order-book calculations into server_v3.js;
+
 - put order placement into orderBook.js;
+
 - make /test-orderbook execute trades;
+
 - silently change margin;
+
 - silently change leverage;
+
 - silently change margin mode;
+
 - silently change order-book thresholds;
+
+- silently change confirmation depths;
+
+- silently change the 3-of-4 confirmation requirement;
+
+- request four separate order books when one 200-level snapshot is sufficient;
+
 - merge V2 into V3;
+
 - perform a large rewrite when a small fix is sufficient.
 ```
 
 ---
 
-# 56. V3 Module Responsibility Matrix
+# 57. V3 Module Responsibility Matrix
 
-| Module                 | Main Responsibility      | Must Not Own          |
-| ---------------------- | ------------------------ | --------------------- |
-| `server_v3.js`         | HTTP, webhook, endpoints | WEEX order logic      |
-| `config/config.js`     | Configuration            | Trading execution     |
-| `weex/weex.js`         | WEEX API and execution   | Strategy decisions    |
-| `filters/orderBook.js` | Order-book analysis      | Order placement       |
-| `trading/trading.js`   | Signal orchestration     | Low-level API signing |
-| `utils/logger.js`      | Logging                  | Trading decisions     |
+| Module                 | Main Responsibility                                      | Must Not Own          |
+| ---------------------- | -------------------------------------------------------- | --------------------- |
+| `server_v3.js`         | HTTP, webhook, endpoints, automatic trader orchestration | WEEX order logic      |
+| `config/config.js`     | Configuration                                            | Trading execution     |
+| `weex/weex.js`         | WEEX API and execution                                   | Strategy decisions    |
+| `filters/orderBook.js` | Order-book analysis and multi-depth confirmation         | Order placement       |
+| `trading/trading.js`   | Signal orchestration                                     | Low-level API signing |
+| `utils/logger.js`      | Logging                                                  | Trading decisions     |
 
 This separation should be preserved.
 
 ---
 
-# 57. Current Baseline
+# 58. Current Baseline
 
 The current V3 baseline consists of:
 
@@ -2089,19 +3110,33 @@ Current behavior:
 
 ```text
 TradingView
+
     |
+
     v
+
 server_v3.js
+
     |
+
     v
+
 trading.js
+
     |
+
     +----> orderBook.js
+
     |
+
     v
+
 weex.js
+
     |
+
     v
+
 WEEX V3
 ```
 
@@ -2109,22 +3144,53 @@ The current order-book integration uses:
 
 ```text
 trading.js
+
     |
+
     v
-checkOrderBook()
+
+Order-Book Filter
+
     |
+
     v
+
 weex.getOrderBook()
+
     |
+
     v
-WEEX REST market depth
+
+ONE 200-LEVEL WEEX REST MARKET DEPTH SNAPSHOT
+
+    |
+
+    +----> 15 levels
+
+    |
+
+    +----> 20 levels
+
+    |
+
+    +----> 30 levels
+
+    |
+
+    +----> 60 levels
+
+    |
+
+    v
+
+3 OF 4 REQUIRED
 ```
 
 A fresh depth request is performed when an entry is evaluated.
 
 ---
 
-# 58. Current System Principles
+# 59. Current System Principles
 
 The most important design principles are:
 
@@ -2137,71 +3203,200 @@ The most important design principles are:
 
 4. New entries are subject to order-book filtering.
 
-5. CLOSE actions bypass order-book filtering.
+5. One 200-level snapshot is used for multi-depth confirmation.
 
-6. Reversals close first.
+6. Confirmation depths are 15, 20, 30 and 60.
 
-7. Reversals confirm FLAT before reopening.
+7. Each depth requires both imbalance and ratio to pass.
 
-8. Every new direction receives a fresh order-book check.
+8. Three of four depth confirmations are required.
 
-9. Same-direction signals do nothing.
+9. CLOSE actions bypass order-book filtering.
 
-10. Operations are locked per symbol.
+10. Reversals close first.
 
-11. Webhook acknowledgement remains fast.
+11. Reversals confirm FLAT before reopening.
 
-12. Contract discovery remains automatic.
+12. Every new direction receives a fresh order-book check.
 
-13. Quantity respects WEEX contract rules.
+13. Same-direction signals do nothing.
 
-14. Step-size rejection can trigger one recalculation/retry.
+14. Operations are locked per symbol.
 
-15. Risk settings are explicit.
+15. Webhook acknowledgement remains fast.
 
-16. Order-book settings are explicit.
+16. Contract discovery remains automatic.
 
-17. V2 remains separate from V3.
+17. Quantity respects WEEX contract rules.
 
-18. Real logs and exchange responses are the authority when debugging.
+18. Step-size rejection can trigger one recalculation/retry.
+
+19. Risk settings are explicit.
+
+20. Order-book settings are explicit.
+
+21. V2 remains separate from V3.
+
+22. Real logs and exchange responses are the authority when debugging.
 ```
 
 ---
 
-# 59. Version History
+# 60. Version History
 
 ## SERVER V3 — 2026-08-31
 
 Current documented architecture and behavior:
 
 * `server_v3.js` is the main entry point.
+
 * TradingView webhook processing uses fast HTTP acknowledgement.
+
 * Trading execution is handled in `trading/trading.js`.
+
 * Direct WEEX API communication remains in `weex/weex.js`.
+
 * Order-book calculations remain in `filters/orderBook.js`.
+
 * Configuration remains centralized in `config/config.js`.
+
 * WEEX live position remains the execution source of truth.
+
 * Automatic WEEX contract discovery remains enabled.
+
 * TradingView symbol normalization remains supported.
+
 * Quantity calculation respects WEEX contract constraints.
+
 * WEEX step-size rejection retry is preserved.
+
 * Margin mode and leverage are verified before opening positions.
+
 * LONG entries require LONG order-book support.
+
 * SHORT entries require SHORT order-book support.
+
 * CLOSE actions bypass the order-book filter.
+
 * Same-direction duplicate signals are suppressed.
+
 * Reversals close the existing position before evaluating the new direction.
+
 * Reversals confirm FLAT before opening the new direction.
+
 * Reversals perform a fresh order-book check.
+
 * Rejected reversal entries can intentionally finish FLAT.
+
 * Per-symbol locks are preserved.
+
 * Order-book statistics are maintained in memory.
+
 * `/test-orderbook` remains read-only.
+
 * V2 remains separate from V3.
 
 ---
 
-# 60. Future Change Documentation Rule
+## SERVER V3 — 2026-09-02
+
+### Multi-Depth Order-Book Confirmation Update
+
+Affected areas:
+
+```text
+filters/orderBook.js
+
+trading/trading.js
+
+weex/weex.js
+
+server_v3.js
+
+dashboard/order-book reporting
+```
+
+Previous confirmation depth configuration:
+
+```text
+15
+
+30
+
+60
+
+90
+```
+
+New confirmation depth configuration:
+
+```text
+15
+
+20
+
+30
+
+60
+```
+
+The 90-level confirmation was replaced by a 20-level confirmation.
+
+The new system uses:
+
+```text
+ONE 200-LEVEL SNAPSHOT
+
+        |
+
+        +----> 15 LEVELS
+
+        +----> 20 LEVELS
+
+        +----> 30 LEVELS
+
+        +----> 60 LEVELS
+```
+
+Each depth requires both:
+
+```text
+Imbalance Test = PASS
+
+AND
+
+Ratio Test = PASS
+```
+
+Final entry confirmation:
+
+```text
+3 OF 4 DEPTHS MUST PASS
+```
+
+Therefore:
+
+```text
+15 + 20 + 30 + 60
+
+            |
+
+            v
+
+3 / 4 required
+```
+
+The order-book confirmation system remains an **entry-only filter**.
+
+CLOSE, CLOSE_LONG and CLOSE_SHORT remain unaffected and bypass the order-book filter.
+
+The 200-level request depth remains unchanged.
+
+The purpose of this change is to replace the 90-level confirmation with a more useful 20-level confirmation while keeping the existing 3-of-4 architecture.
+
+---
+
+# 61. Future Change Documentation Rule
 
 Whenever a major intentional behavior or architecture change is made, update this README.
 
@@ -2209,10 +3404,15 @@ At minimum, document:
 
 ```text
 Date
+
 Change
+
 Affected File(s)
+
 New Behavior
+
 Reason for Change
+
 Important Safety Impact
 ```
 
@@ -2222,20 +3422,27 @@ Example:
 ## 2026-09-XX — Order-Book Filter Update
 
 Affected files:
+
 - filters/orderBook.js
+
 - config/config.js
+
 - trading/trading.js
 
 Change:
+
 Adjusted the order-book acceptance logic.
 
 New behavior:
+
 LONG and SHORT entries use the updated threshold configuration.
 
 Safety:
+
 CLOSE actions remain completely unaffected.
 
 Reason:
+
 Improve the balance between filtering weak entries and allowing valid TradingView setups.
 ```
 
@@ -2245,79 +3452,146 @@ Keep intentional changes traceable.
 
 ---
 
-# 61. Final Architecture
+# 62. Final Architecture
 
 ```text
                          TRADINGVIEW
+
                              |
+
                              |
+
                     LONG / SHORT / CLOSE
+
                              |
+
                              v
+
                      +---------------+
+
                      | server_v3.js  |
+
                      |               |
+
                      | HTTP/Webhook  |
+
                      +-------+-------+
+
                              |
+
                              v
+
                     +----------------+
+
                     | trading.js     |
+
                     |                |
+
                     | Position logic |
+
                     | Reversals      |
+
                     | Locks          |
+
                     | Statistics     |
+
                     +---+--------+---+
+
                         |        |
+
              ENTRY ONLY |        | WEEX
+
                         v        v
+
                 +-----------+  +-----------+
+
                 | orderBook |  |  weex.js  |
+
                 |           |  |           |
+
                 | Depth     |  | API Auth  |
+
                 | Imbalance |  | Balance   |
+
                 | Ratios    |  | Position  |
-                | Filter    |  | Quantity  |
-                +-----------+  | Orders    |
-                        |      | Leverage  |
-                        |      +-----+-----+
-                        |            |
-                        +------------+
-                                     |
-                                     v
-                              +-------------+
-                              | WEEX V3     |
-                              | USDT-M       |
-                              | FUTURES      |
-                              +-------------+
+
+                | 15        |  | Quantity  |
+
+                | 20        |  | Orders    |
+
+                | 30        |  | Leverage  |
+
+                | 60        |  +-----+-----+
+
+                | 3 OF 4    |        |
+
+                +-----------+        |
+
+                        |             |
+
+                        +-------------+
+
+                              |
+
+                              v
+
+                        +-------------+
+
+                        | WEEX V3     |
+
+                        | USDT-M      |
+
+                        | FUTURES     |
+
+                        +-------------+
 ```
 
 The final responsibility boundary is:
 
 ```text
 TRADINGVIEW
+
     =
+
 Signal Generation
 
+
 SERVER V3
+
     =
+
 HTTP + Webhook Transport
 
+
 TRADING.JS
+
     =
+
 Trading Controller + Safety Logic
 
+
 ORDERBOOK.JS
+
     =
+
 Entry Market-Depth Filter
 
+15 / 20 / 30 / 60
+
+3 OF 4 CONFIRMATION
+
+
 WEEX.JS
+
     =
+
 Exchange API + Execution
 
+
 WEEX
+
     =
+
 Final Position State
 ```
 
@@ -2328,32 +3602,53 @@ Final Position State
 ```text
 SERVER V3
 
-Updated: 2026-08-31
+Updated: 2026-09-02
 
 Main entry point:
+
 server_v3.js
 
 Execution exchange:
+
 WEEX V3 USDT-M Futures
 
 Position source of truth:
+
 WEEX live account position
 
 Order-book source:
+
 WEEX REST market depth via weex.js
 
-Architecture:
-TradingView -> server_v3.js -> trading.js -> weex.js -> WEEX
+Order-book snapshot:
+
+200 levels
+
+Confirmation depths:
+
+15 / 20 / 30 / 60
+
+Confirmation rule:
+
+3 OF 4
 
 Entry filter:
+
 filters/orderBook.js
 
 Configuration:
+
 config/config.js
 
+Trading controller:
+
+trading/trading.js
+
 Logging:
+
 utils/logger.js
 
 V2:
+
 Kept separate as legacy/backup implementation
 

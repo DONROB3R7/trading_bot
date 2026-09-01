@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+
 // ============================================================
 // SERVER
 // ============================================================
@@ -45,10 +46,10 @@ const TP_SL_ENABLED =
     true;
 
 const TAKE_PROFIT_PERCENT =
-    2.0;
+    4.0;
 
 const STOP_LOSS_PERCENT =
-    2.0;
+    4.0;
 
 const TP_SL_TRIGGER_TYPE =
     "MARK_PRICE";
@@ -65,14 +66,19 @@ const TP_SL_TRIGGER_TYPE =
 // Positive imbalance = BID pressure
 // Negative imbalance = ASK pressure
 //
-// LONG:
+// LONG requires BOTH:
+//
 //     imbalance >= LONG_MIN_IMBALANCE
+//     AND
+//     bid/ask >= MIN_BID_ASK_RATIO
 //
-// SHORT:
+// SHORT requires BOTH:
+//
 //     imbalance <= SHORT_MAX_IMBALANCE
+//     AND
+//     ask/bid >= MIN_ASK_BID_RATIO
 //
-// Ratios are monitored only.
-// They DO NOT block trades in trading.js.
+// CLOSE is NEVER blocked by the order-book filter.
 //
 
 const ORDER_BOOK_FILTER_ENABLED =
@@ -81,17 +87,71 @@ const ORDER_BOOK_FILTER_ENABLED =
 const ORDER_BOOK_DEPTH =
     200;
 
+
+// ------------------------------------------------------------
+// IMBALANCE THRESHOLDS
+// ------------------------------------------------------------
+
 const LONG_MIN_IMBALANCE =
-    0.02;
+    0.04;
 
 const SHORT_MAX_IMBALANCE =
-    -0.02;
+    -0.04;
+
+
+// ------------------------------------------------------------
+// RATIO THRESHOLDS
+// ------------------------------------------------------------
+//
+// LONG:
+//
+//     BID / ASK >= 1.03
+//
+// SHORT:
+//
+//     ASK / BID >= 1.03
+//
 
 const MIN_BID_ASK_RATIO =
     1.03;
 
 const MIN_ASK_BID_RATIO =
     1.03;
+
+
+// ============================================================
+// ORDER BOOK DEPTH CONFIRMATION
+// ============================================================
+//
+// Four independent depth confirmations:
+//
+//     15 levels
+//     30 levels
+//     60 levels
+//     90 levels
+//
+// The trade requires:
+//
+//     3 OF 4
+//
+// Therefore:
+//
+//     4/4 = PASS
+//     3/4 = PASS
+//     2/4 = BLOCK
+//     1/4 = BLOCK
+//     0/4 = BLOCK
+//
+// Each individual depth must pass BOTH:
+//
+//     imbalance test
+//     ratio test
+//
+// before that depth counts as a confirmation.
+//
+
+const ORDER_BOOK_CONFIRMATION_REQUIRED =
+    3;
 
 
 // ============================================================
@@ -124,9 +184,6 @@ const TRADING_ENABLED =
 // 6. Respect existing-position logic
 // 7. Never open both directions
 //
-// The automatic trader uses the same processSignal()
-// used by TradingView.
-//
 
 const AUTO_TRADING_ENABLED =
     true;
@@ -140,7 +197,8 @@ const AUTO_TRADING_ENABLED =
 //
 
 const AUTO_TRADING_INTERVAL_MS =
-  60 * 60 * 1000;
+    60 * 60 * 1000;
+
 
 // ============================================================
 // MAXIMUM TRADES PER CYCLE
@@ -148,14 +206,6 @@ const AUTO_TRADING_INTERVAL_MS =
 //
 // Prevents one hourly scan from opening/reversing
 // too many positions.
-//
-// Example:
-//
-// 100 symbols scanned
-// 20 signals pass
-// MAX_TRADES_PER_CYCLE = 3
-//
-// Only the first 3 trade decisions are allowed.
 //
 
 const AUTO_TRADING_MAX_TRADES_PER_CYCLE =
@@ -166,13 +216,11 @@ const AUTO_TRADING_MAX_TRADES_PER_CYCLE =
 // SYMBOL DELAY
 // ============================================================
 //
-// Small delay between symbols.
-//
-// Prevents sending too many WEEX requests
-// at exactly the same time.
+// Intentional 1-hour delay between symbols.
 //
 
-const AUTO_TRADING_SYMBOL_DELAY_MS = 60 * 60 * 1000;
+const AUTO_TRADING_SYMBOL_DELAY_MS =
+    60 * 60 * 1000;
 
 
 // ============================================================
@@ -183,8 +231,6 @@ const AUTO_TRADING_SYMBOL_DELAY_MS = 60 * 60 * 1000;
 //
 // Normally LONG and SHORT cannot both pass because
 // the thresholds are positive/negative.
-//
-// These values are kept configurable for future changes.
 //
 
 const AUTO_TRADING_REQUIRE_DIRECTION =
@@ -279,6 +325,8 @@ module.exports = {
     MIN_BID_ASK_RATIO,
 
     MIN_ASK_BID_RATIO,
+
+    ORDER_BOOK_CONFIRMATION_REQUIRED,
 
 
     // --------------------------------------------------------

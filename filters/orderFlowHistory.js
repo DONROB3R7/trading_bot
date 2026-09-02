@@ -2,56 +2,44 @@
 // ORDER FLOW HISTORY
 // TradingView → WEEX Bot V3
 //
-// Purpose:
+// LOGIC:
 //
-// - Collect one fresh order-flow snapshot every automatic scan
-// - Build a configurable history cycle
-// - Use the 200-level order book as the TREND FILTER
-// - Use 15 / 20 / 30 / 60 levels as the TRIGGER
-// - Require 3 OF 4 trigger depths
-// - Wait until the configured history cycle is complete
-// - Calculate ONE FINAL DECISION
-// - Reset the history after the final decision
-// - Start a completely fresh cycle
-//
-// IMPORTANT:
-//
-// The history length is controlled by:
-//
-//     AUTO_TRADING_HISTORY_MINUTES
-//
-// Example:
-//
-//     10 = 10 snapshots
-//     20 = 20 snapshots
-//     30 = 30 snapshots
-//     60 = 60 snapshots
-//
-// The automatic trader collects approximately one snapshot
-// every minute.
-//
-// Therefore:
-//
-//     10 minutes = 10 snapshots
-//     60 minutes = 60 snapshots
+//     FULL 200-LEVEL TREND
+//              +
+//     15 / 20 / 30 / 60 TRIGGER
+//              ↓
+//        CURRENT SIGNAL
+//              ↓
+//        HISTORY CHECK
+//              ↓
+//        FINAL DECISION
 //
 // IMPORTANT:
 //
-// This module does NOT communicate with WEEX directly.
+// 200 LEVEL = TREND
 //
-// It receives the already-calculated result from:
+// 15 / 20 / 30 / 60 = TRIGGER
 //
-//     filters/orderBook.js
+// The 200 trend is calculated independently from the
+// confirmation depths.
 //
-// The same 200-level snapshot is reused.
-// No second order-book request is made here.
+// HISTORY IS A FIXED CYCLE:
+//
+//     10 snapshots → decision → reset
+//     20 snapshots → decision → reset
+//     30 snapshots → decision → reset
+//     60 snapshots → decision → reset
+//
+// AUTO_TRADING_HISTORY_MINUTES controls the cycle length.
+//
+// No rolling window.
+// No second WEEX request.
+// The same order-book snapshot is reused.
 // ============================================================
-
 
 const {
     calculateOrderBookPressure
 } = require("./orderBook");
-
 
 const {
     LONG_MIN_IMBALANCE,
@@ -62,97 +50,69 @@ const {
     AUTO_TRADING_HISTORY_MINUTES
 } = require("../config/config");
 
-
 // ============================================================
-// HISTORY CONFIGURATION
-// ============================================================
-//
-// One automatic scan approximately every minute.
-//
-// The actual history size is controlled by:
-//
-//     AUTO_TRADING_HISTORY_MINUTES
-//
+// CONFIG
 // ============================================================
 
 const HISTORY_INTERVAL_MS =
     AUTO_TRADING_INTERVAL_MS;
 
-
-// ------------------------------------------------------------
-// NUMBER OF SNAPSHOTS REQUIRED
-// ------------------------------------------------------------
-//
-// Example:
-//
-//     AUTO_TRADING_HISTORY_MINUTES = 10
-//
-// means:
-//
-//     10 snapshots required.
-//
-// ============================================================
-
 const REQUIRED_HISTORY_SNAPSHOTS =
     Math.max(
         1,
-        Number(
-            AUTO_TRADING_HISTORY_MINUTES
-        ) || 60
+        Number(AUTO_TRADING_HISTORY_MINUTES) || 60
     );
 
+// ============================================================
+// HISTORY CONFIRMATION
+//
+// 200 trend history:
+//
+//     70% LONG
+//     OR
+//     70% SHORT
+//
+// Trigger history:
+//
+//     60% LONG
+//     OR
+//     60% SHORT
+// ============================================================
 
-// ------------------------------------------------------------
-// TREND / TRIGGER CONFIRMATION
-// ------------------------------------------------------------
-
-const TREND_MIN_PERCENT =
-    70;
-
-const TRIGGER_MIN_PERCENT =
-    60;
-
-
-// ------------------------------------------------------------
-// ORDER BOOK DEPTHS
-// ------------------------------------------------------------
-
-const CONFIRMATION_DEPTHS =
-    [15, 20, 30, 60];
-
-const REQUIRED_PASSED_DEPTHS =
-    3;
-
+const TREND_MIN_PERCENT = 70;
+const TRIGGER_MIN_PERCENT = 60;
 
 // ============================================================
-// INTERNAL STORAGE
+// CONFIRMATION DEPTHS
+// ============================================================
+
+const CONFIRMATION_DEPTHS = [
+    15,
+    20,
+    30,
+    60
+];
+
+const REQUIRED_PASSED_DEPTHS = 3;
+
+// ============================================================
+// HISTORY STORAGE
 //
 // symbol -> {
 //
 //     snapshots: [],
-//
 //     lastCollectedAt: timestamp
 //
 // }
 //
-// IMPORTANT:
-//
-// This is NOT a rolling history.
-//
-// Once the required number of snapshots is reached:
-//
-//     calculate final decision
-//     reset snapshots
-//     start new cycle
-//
+// FIXED CYCLE.
+// NOT ROLLING.
 // ============================================================
 
-const historyBySymbol =
-    new Map();
-
+const historyBySymbol = new Map();
 
 // ============================================================
-// HELPERS
+// BASIC HELPERS
 // ============================================================
 
 function normalizeSymbol(symbol) {
@@ -161,16 +121,14 @@ function normalizeSymbol(symbol) {
         .toUpperCase();
 }
 
-
 function normalizeDirection(direction) {
     if (!direction) {
         return "NEUTRAL";
     }
 
-    const value =
-        String(direction)
-            .trim()
-            .toUpperCase();
+    const value = String(direction)
+        .trim()
+        .toUpperCase();
 
     if (value === "LONG") {
         return "LONG";
@@ -183,11 +141,7 @@ function normalizeDirection(direction) {
     return "NEUTRAL";
 }
 
-
-function calculatePercentage(
-    count,
-    total
-) {
+function calculatePercentage(count, total) {
     if (!total) {
         return 0;
     }
@@ -200,13 +154,11 @@ function calculatePercentage(
     );
 }
 
-
 // ============================================================
-// GET / CREATE SYMBOL HISTORY
+// GET / CREATE HISTORY
 // ============================================================
 
 function getSymbolHistory(symbol) {
-
     const normalizedSymbol =
         normalizeSymbol(symbol);
 
@@ -235,36 +187,17 @@ function getSymbolHistory(symbol) {
     );
 }
 
-
 // ============================================================
 // CLEAN HISTORY
 //
-// IMPORTANT:
+// Safety only.
 //
-// There is NO time-based cleanup anymore.
-//
-// We use a fixed-size cycle:
-//
-//     1 → 2 → 3 → ... → N
-//
-// Once N is reached:
-//
-//     calculate decision
-//     reset
-//
+// Does NOT remove history based on time.
 // ============================================================
 
 function cleanupHistory(symbol) {
-
     const history =
         getSymbolHistory(symbol);
-
-    // --------------------------------------------------------
-    // Safety protection only.
-    //
-    // Never allow history to grow beyond the configured
-    // cycle size.
-    // --------------------------------------------------------
 
     if (
         history.snapshots.length >
@@ -279,23 +212,37 @@ function cleanupHistory(symbol) {
     return history.snapshots;
 }
 
-
 // ============================================================
 // SNAPSHOT COLLECTION
 //
-// The automatic trader controls the scan interval.
+// Automatic scanner calls this once per scan.
 //
-// Every call = one snapshot.
+// Example:
 //
+//     1/10
+//     2/10
+//     ...
+//     10/10
 // ============================================================
 
 function shouldCollectSnapshot() {
     return true;
 }
 
-
 // ============================================================
-// CALCULATE 200-LEVEL TREND
+// CALCULATE TRUE 200-LEVEL TREND
+//
+// IMPORTANT:
+//
+// This uses ALL levels contained in the snapshot.
+//
+// It does NOT use:
+//     15
+//     20
+//     30
+//     60
+//
+// Those are separate trigger levels.
 //
 // LONG:
 //
@@ -314,15 +261,16 @@ function shouldCollectSnapshot() {
 //     NEUTRAL
 // ============================================================
 
-function calculateCurrentTrend200(
-    snapshot
-) {
-
+function calculateCurrentTrend200(snapshot) {
     if (
         !snapshot ||
         !Array.isArray(snapshot.bids) ||
         !Array.isArray(snapshot.asks)
     ) {
+        console.log(
+            "[200 TREND] INVALID SNAPSHOT"
+        );
+
         return {
             direction: "NEUTRAL",
             available: false,
@@ -331,56 +279,110 @@ function calculateCurrentTrend200(
         };
     }
 
+    // ========================================================
+    // IMPORTANT:
+    //
+    // Use the COMPLETE snapshot.
+    //
+    // No slice.
+    // No 15/20/30/60.
+    // ========================================================
+
+    const bids = snapshot.bids;
+    const asks = snapshot.asks;
 
     const pressure =
         calculateOrderBookPressure({
-            bids: snapshot.bids,
-            asks: snapshot.asks
+            bids,
+            asks
         });
 
+    const imbalance =
+        Number(
+            pressure.imbalance
+        );
 
-    let direction =
-        "NEUTRAL";
+    const bidAskRatio =
+        Number(
+            pressure.bidAskRatio
+        );
 
+    const askBidRatio =
+        Number(
+            pressure.askBidRatio
+        );
+
+    const longThreshold =
+        Number(
+            LONG_MIN_IMBALANCE
+        );
+
+    const shortThreshold =
+        Number(
+            SHORT_MAX_IMBALANCE
+        );
+
+    const minBidAskRatio =
+        Number(
+            MIN_BID_ASK_RATIO
+        );
+
+    const minAskBidRatio =
+        Number(
+            MIN_ASK_BID_RATIO
+        );
+
+    // ========================================================
+    // DEBUG
+    //
+    // This lets us see EXACTLY what the history engine
+    // receives for the 200-level calculation.
+    // ========================================================
+
+    console.log(
+        `[200 TREND] ` +
+        `levels=${bids.length}/${asks.length} | ` +
+        `imbalance=${imbalance.toFixed(4)} | ` +
+        `bidAsk=${bidAskRatio.toFixed(4)} | ` +
+        `askBid=${askBidRatio.toFixed(4)}`
+    );
+
+    // ========================================================
+    // TREND DECISION
+    // ========================================================
+
+    let direction = "NEUTRAL";
 
     if (
-        pressure.imbalance >=
-            Number(
-                LONG_MIN_IMBALANCE
-            ) &&
-        pressure.bidAskRatio >=
-            Number(
-                MIN_BID_ASK_RATIO
-            )
+        imbalance >= longThreshold &&
+        bidAskRatio >= minBidAskRatio
     ) {
-
-        direction =
-            "LONG";
-
+        direction = "LONG";
     } else if (
-        pressure.imbalance <=
-            Number(
-                SHORT_MAX_IMBALANCE
-            ) &&
-        pressure.askBidRatio >=
-            Number(
-                MIN_ASK_BID_RATIO
-            )
+        imbalance <= shortThreshold &&
+        askBidRatio >= minAskBidRatio
     ) {
-
-        direction =
-            "SHORT";
+        direction = "SHORT";
     }
 
+    // ========================================================
+    // FINAL DEBUG
+    // ========================================================
+
+    console.log(
+        `[200 TREND] RESULT=${direction}`
+    );
 
     return {
-
         direction,
-
         available: true,
 
-        imbalance:
-            pressure.imbalance,
+        levels: {
+            bids: bids.length,
+            asks: asks.length
+        },
+
+        imbalance,
 
         bidLiquidity:
             pressure.bidLiquidity,
@@ -397,25 +399,33 @@ function calculateCurrentTrend200(
         askPercentage:
             pressure.askPercentage,
 
-        bidAskRatio:
-            pressure.bidAskRatio,
+        bidAskRatio,
+        askBidRatio,
 
-        askBidRatio:
-            pressure.askBidRatio
+        thresholds: {
+            longImbalance:
+                longThreshold,
+
+            shortImbalance:
+                shortThreshold,
+
+            minBidAskRatio,
+            minAskBidRatio
+        }
     };
 }
 
-
 // ============================================================
-// CONVERT CURRENT ORDER-BOOK ANALYSIS
-// INTO A HISTORY SNAPSHOT
+// CREATE HISTORY SNAPSHOT
+//
+// One automatic order-book result becomes ONE history
+// snapshot.
 // ============================================================
 
 function createHistorySnapshot(
     orderBookResult,
     now = Date.now()
 ) {
-
     if (
         !orderBookResult ||
         !orderBookResult.analysis
@@ -425,14 +435,11 @@ function createHistorySnapshot(
         );
     }
 
-
     const analysis =
         orderBookResult.analysis;
 
-
     const snapshot =
         analysis.snapshot;
-
 
     if (!snapshot) {
         throw new Error(
@@ -440,60 +447,44 @@ function createHistorySnapshot(
         );
     }
 
-
-    // --------------------------------------------------------
-    // 200 LEVEL TREND
-    // --------------------------------------------------------
+    // ========================================================
+    // 200 TREND
+    // ========================================================
 
     const trend200 =
         calculateCurrentTrend200(
             snapshot
         );
 
-
-    // --------------------------------------------------------
-    // DEPTH DIRECTIONS
+    // ========================================================
+    // 15 / 20 / 30 / 60
     //
-    // Each depth can support:
-    //
-    //     LONG
-    //     SHORT
-    //     NEUTRAL
-    //
-    // --------------------------------------------------------
+    // These are the TRIGGER.
+    // ========================================================
 
     const depthDirections = {};
-
 
     for (
         const depth of CONFIRMATION_DEPTHS
     ) {
-
         const longResult =
             analysis.long
-                ?.results
-                ?.[depth];
-
+                ?.results?.[depth];
 
         const shortResult =
             analysis.short
-                ?.results
-                ?.[depth];
-
+                ?.results?.[depth];
 
         const longPass =
             longResult?.filterPass === true;
 
-
         const shortPass =
             shortResult?.filterPass === true;
-
 
         if (
             longPass &&
             !shortPass
         ) {
-
             depthDirections[
                 `depth${depth}`
             ] = "LONG";
@@ -502,41 +493,40 @@ function createHistorySnapshot(
             shortPass &&
             !longPass
         ) {
-
             depthDirections[
                 `depth${depth}`
             ] = "SHORT";
 
         } else {
-
             depthDirections[
                 `depth${depth}`
             ] = "NEUTRAL";
         }
     }
 
-
-    // --------------------------------------------------------
-    // CURRENT TRIGGER
-    //
-    // 3 OF 4 depths required.
-    // --------------------------------------------------------
+    // ========================================================
+    // COUNT TRIGGER PASSES
+    // ========================================================
 
     const longPassedCount =
-        analysis.long
-            ?.passedDepths ??
-        0;
-
+        Number(
+            analysis.long
+                ?.passedDepths ?? 0
+        );
 
     const shortPassedCount =
-        analysis.short
-            ?.passedDepths ??
-        0;
+        Number(
+            analysis.short
+                ?.passedDepths ?? 0
+        );
 
+    // ========================================================
+    // CURRENT TRIGGER
+    //
+    // 3 OF 4 REQUIRED.
+    // ========================================================
 
-    let triggerDirection =
-        "NEUTRAL";
-
+    let triggerDirection = "NEUTRAL";
 
     if (
         longPassedCount >=
@@ -544,9 +534,7 @@ function createHistorySnapshot(
         shortPassedCount <
             REQUIRED_PASSED_DEPTHS
     ) {
-
-        triggerDirection =
-            "LONG";
+        triggerDirection = "LONG";
 
     } else if (
         shortPassedCount >=
@@ -554,21 +542,75 @@ function createHistorySnapshot(
         longPassedCount <
             REQUIRED_PASSED_DEPTHS
     ) {
-
-        triggerDirection =
-            "SHORT";
+        triggerDirection = "SHORT";
     }
 
+    // ========================================================
+    // CURRENT COMBINED
+    //
+    // 200 TREND + TRIGGER MUST AGREE.
+    // ========================================================
+
+    let combinedDirection = "NEUTRAL";
+
+    let combinedReason =
+        "TREND_TRIGGER_NOT_CONFIRMED";
+
+    if (
+        trend200.direction === "LONG" &&
+        triggerDirection === "LONG"
+    ) {
+        combinedDirection = "LONG";
+
+        combinedReason =
+            "200_TREND_AND_TRIGGER_AGREE_LONG";
+
+    } else if (
+        trend200.direction === "SHORT" &&
+        triggerDirection === "SHORT"
+    ) {
+        combinedDirection = "SHORT";
+
+        combinedReason =
+            "200_TREND_AND_TRIGGER_AGREE_SHORT";
+
+    } else if (
+        trend200.direction === "NEUTRAL"
+    ) {
+        combinedReason =
+            "200_TREND_NEUTRAL";
+
+    } else if (
+        triggerDirection === "NEUTRAL"
+    ) {
+        combinedReason =
+            "TRIGGER_NEUTRAL";
+
+    } else {
+        combinedReason =
+            "TREND_TRIGGER_DISAGREEMENT";
+    }
+
+    // ========================================================
+    // RETURN SNAPSHOT
+    // ========================================================
 
     return {
-
         timestamp: now,
+
+        // ----------------------------------------------------
+        // TRUE 200 TREND
+        // ----------------------------------------------------
 
         trend200:
             trend200.direction,
 
         trend200Data:
             trend200,
+
+        // ----------------------------------------------------
+        // DEPTH TRIGGER
+        // ----------------------------------------------------
 
         depth15:
             depthDirections.depth15,
@@ -582,22 +624,30 @@ function createHistorySnapshot(
         depth60:
             depthDirections.depth60,
 
+        // ----------------------------------------------------
+        // TRIGGER
+        // ----------------------------------------------------
+
         triggerDirection,
 
         longPassedDepths:
             longPassedCount,
 
         shortPassedDepths:
-            shortPassedCount
+            shortPassedCount,
+
+        // ----------------------------------------------------
+        // COMBINED
+        // ----------------------------------------------------
+
+        combinedDirection,
+
+        combinedReason
     };
 }
 
-
 // ============================================================
 // ADD SNAPSHOT
-//
-// Every automatic scan adds exactly ONE snapshot.
-//
 // ============================================================
 
 function addSnapshot(
@@ -605,16 +655,13 @@ function addSnapshot(
     orderBookResult,
     now = Date.now()
 ) {
-
     const normalizedSymbol =
         normalizeSymbol(symbol);
-
 
     const history =
         getSymbolHistory(
             normalizedSymbol
         );
-
 
     const historySnapshot =
         createHistorySnapshot(
@@ -622,107 +669,79 @@ function addSnapshot(
             now
         );
 
-
     history.snapshots.push(
         historySnapshot
     );
 
-
     history.lastCollectedAt =
         now;
-
 
     cleanupHistory(
         normalizedSymbol
     );
 
-
     return history.snapshots;
 }
 
-
 // ============================================================
-// CALCULATE 200-LEVEL HISTORY
+// CALCULATE 200 TREND HISTORY
+//
+// Requires:
+//
+//     70% LONG
+// OR
+//     70% SHORT
 // ============================================================
 
 function calculateTrend200(
     snapshots
 ) {
-
     if (
         !Array.isArray(snapshots) ||
         !snapshots.length
     ) {
-
         return {
-
-            direction:
-                "NEUTRAL",
-
-            longCount:
-                0,
-
-            shortCount:
-                0,
-
-            neutralCount:
-                0,
-
-            longPercent:
-                0,
-
-            shortPercent:
-                0,
-
-            neutralPercent:
-                0,
-
-            total:
-                0,
-
-            enoughHistory:
-                false
+            direction: "NEUTRAL",
+            longCount: 0,
+            shortCount: 0,
+            neutralCount: 0,
+            longPercent: 0,
+            shortPercent: 0,
+            neutralPercent: 0,
+            total: 0,
+            enoughHistory: false
         };
     }
-
 
     let longCount = 0;
     let shortCount = 0;
     let neutralCount = 0;
 
-
     for (
         const snapshot of snapshots
     ) {
-
         const direction =
             normalizeDirection(
                 snapshot.trend200
             );
 
-
         if (
             direction === "LONG"
         ) {
-
             longCount++;
 
         } else if (
             direction === "SHORT"
         ) {
-
             shortCount++;
 
         } else {
-
             neutralCount++;
         }
     }
 
-
     const total =
         snapshots.length;
-
 
     const longPercent =
         calculatePercentage(
@@ -730,13 +749,11 @@ function calculateTrend200(
             total
         );
 
-
     const shortPercent =
         calculatePercentage(
             shortCount,
             total
         );
-
 
     const neutralPercent =
         calculatePercentage(
@@ -744,49 +761,35 @@ function calculateTrend200(
             total
         );
 
-
-    let direction =
-        "NEUTRAL";
-
+    let direction = "NEUTRAL";
 
     if (
         total >=
         REQUIRED_HISTORY_SNAPSHOTS
     ) {
-
         if (
             longPercent >=
             TREND_MIN_PERCENT
         ) {
-
-            direction =
-                "LONG";
+            direction = "LONG";
 
         } else if (
             shortPercent >=
             TREND_MIN_PERCENT
         ) {
-
-            direction =
-                "SHORT";
+            direction = "SHORT";
         }
     }
 
-
     return {
-
         direction,
 
         longCount,
-
         shortCount,
-
         neutralCount,
 
         longPercent,
-
         shortPercent,
-
         neutralPercent,
 
         total,
@@ -797,89 +800,65 @@ function calculateTrend200(
     };
 }
 
-
 // ============================================================
 // CALCULATE TRIGGER HISTORY
+//
+// Requires:
+//
+//     60% LONG
+// OR
+//     60% SHORT
 // ============================================================
 
 function calculateTriggerHistory(
     snapshots
 ) {
-
     if (
         !Array.isArray(snapshots) ||
         !snapshots.length
     ) {
-
         return {
-
-            direction:
-                "NEUTRAL",
-
-            longCount:
-                0,
-
-            shortCount:
-                0,
-
-            neutralCount:
-                0,
-
-            longPercent:
-                0,
-
-            shortPercent:
-                0,
-
-            neutralPercent:
-                0,
-
-            total:
-                0,
-
-            enoughHistory:
-                false
+            direction: "NEUTRAL",
+            longCount: 0,
+            shortCount: 0,
+            neutralCount: 0,
+            longPercent: 0,
+            shortPercent: 0,
+            neutralPercent: 0,
+            total: 0,
+            enoughHistory: false
         };
     }
-
 
     let longCount = 0;
     let shortCount = 0;
     let neutralCount = 0;
 
-
     for (
         const snapshot of snapshots
     ) {
-
         const direction =
             normalizeDirection(
                 snapshot.triggerDirection
             );
 
-
         if (
             direction === "LONG"
         ) {
-
             longCount++;
 
         } else if (
             direction === "SHORT"
         ) {
-
             shortCount++;
 
         } else {
-
             neutralCount++;
         }
     }
 
-
     const total =
         snapshots.length;
-
 
     const longPercent =
         calculatePercentage(
@@ -887,13 +866,11 @@ function calculateTriggerHistory(
             total
         );
 
-
     const shortPercent =
         calculatePercentage(
             shortCount,
             total
         );
-
 
     const neutralPercent =
         calculatePercentage(
@@ -901,49 +878,35 @@ function calculateTriggerHistory(
             total
         );
 
-
-    let direction =
-        "NEUTRAL";
-
+    let direction = "NEUTRAL";
 
     if (
         total >=
         REQUIRED_HISTORY_SNAPSHOTS
     ) {
-
         if (
             longPercent >=
             TRIGGER_MIN_PERCENT
         ) {
-
-            direction =
-                "LONG";
+            direction = "LONG";
 
         } else if (
             shortPercent >=
             TRIGGER_MIN_PERCENT
         ) {
-
-            direction =
-                "SHORT";
+            direction = "SHORT";
         }
     }
 
-
     return {
-
         direction,
 
         longCount,
-
         shortCount,
-
         neutralCount,
 
         longPercent,
-
         shortPercent,
-
         neutralPercent,
 
         total,
@@ -954,47 +917,106 @@ function calculateTriggerHistory(
     };
 }
 
+// ============================================================
+// CALCULATE COMBINED HISTORY
+//
+// 200 HISTORY + TRIGGER HISTORY
+// MUST AGREE.
+// ============================================================
+
+function calculateCombinedHistory(
+    trend200,
+    triggerHistory
+) {
+    const trendDirection =
+        normalizeDirection(
+            trend200?.direction
+        );
+
+    const triggerDirection =
+        normalizeDirection(
+            triggerHistory?.direction
+        );
+
+    let direction = "NEUTRAL";
+
+    let reason =
+        "TREND_TRIGGER_HISTORY_DISAGREEMENT";
+
+    if (
+        trendDirection === "LONG" &&
+        triggerDirection === "LONG"
+    ) {
+        direction = "LONG";
+
+        reason =
+            "200_HISTORY_AND_TRIGGER_HISTORY_AGREE_LONG";
+
+    } else if (
+        trendDirection === "SHORT" &&
+        triggerDirection === "SHORT"
+    ) {
+        direction = "SHORT";
+
+        reason =
+            "200_HISTORY_AND_TRIGGER_HISTORY_AGREE_SHORT";
+
+    } else if (
+        trendDirection === "NEUTRAL"
+    ) {
+        reason =
+            "200_TREND_HISTORY_NEUTRAL";
+
+    } else if (
+        triggerDirection === "NEUTRAL"
+    ) {
+        reason =
+            "TRIGGER_HISTORY_NEUTRAL";
+
+    } else {
+        reason =
+            "TREND_TRIGGER_HISTORY_DISAGREEMENT";
+    }
+
+    return {
+        direction,
+        reason,
+
+        trendDirection,
+        triggerDirection,
+
+        agreed:
+            direction !== "NEUTRAL"
+    };
+}
 
 // ============================================================
 // CALCULATE CURRENT TRIGGER
 //
-// Uses the already-calculated 15/20/30/60 results.
+// Uses the already-calculated depth directions.
 // ============================================================
 
 function calculateCurrentTrigger(
     snapshot
 ) {
-
     if (!snapshot) {
-
         return {
+            direction: "NEUTRAL",
 
-            direction:
-                "NEUTRAL",
+            longPassedCount: 0,
+            shortPassedCount: 0,
 
-            longPassedCount:
-                0,
-
-            shortPassedCount:
-                0,
-
-            longPassedDepths:
-                [],
-
-            shortPassedDepths:
-                []
+            longPassedDepths: [],
+            shortPassedDepths: []
         };
     }
-
 
     const longPassedDepths = [];
     const shortPassedDepths = [];
 
-
     for (
         const depth of CONFIRMATION_DEPTHS
     ) {
-
         const direction =
             normalizeDirection(
                 snapshot[
@@ -1002,39 +1024,30 @@ function calculateCurrentTrigger(
                 ]
             );
 
-
         if (
             direction === "LONG"
         ) {
-
             longPassedDepths.push(
                 depth
             );
         }
 
-
         if (
             direction === "SHORT"
         ) {
-
             shortPassedDepths.push(
                 depth
             );
         }
     }
 
-
     const longPassedCount =
         longPassedDepths.length;
-
 
     const shortPassedCount =
         shortPassedDepths.length;
 
-
-    let direction =
-        "NEUTRAL";
-
+    let direction = "NEUTRAL";
 
     if (
         longPassedCount >=
@@ -1042,9 +1055,7 @@ function calculateCurrentTrigger(
         shortPassedCount <
             REQUIRED_PASSED_DEPTHS
     ) {
-
-        direction =
-            "LONG";
+        direction = "LONG";
 
     } else if (
         shortPassedCount >=
@@ -1052,207 +1063,209 @@ function calculateCurrentTrigger(
         longPassedCount <
             REQUIRED_PASSED_DEPTHS
     ) {
-
-        direction =
-            "SHORT";
+        direction = "SHORT";
     }
 
-
     return {
-
         direction,
 
         longPassedCount,
-
         shortPassedCount,
 
         longPassedDepths,
-
         shortPassedDepths
     };
 }
 
-
 // ============================================================
-// FINAL DECISION
+// CALCULATE FINAL DECISION
 //
-// IMPORTANT:
+// ALL CONDITIONS MUST AGREE:
 //
-// This function is only considered a REAL final decision
-// when the history cycle has reached:
+// 1. History complete
+// 2. Current 200 not neutral
+// 3. Current trigger not neutral
+// 4. Current 200 == current trigger
+// 5. Current combined not neutral
+// 6. 200 history agrees with current 200
+// 7. Trigger history agrees with current trigger
+// 8. Combined history agrees with current combined
 //
-//     REQUIRED_HISTORY_SNAPSHOTS
+// THEN:
 //
-// Example:
+//     LONG / SHORT
 //
-//     10/10 → FINAL DECISION
+// OTHERWISE:
 //
-// Otherwise:
-//
-//     1/10 → COLLECTING_HISTORY
-//     2/10 → COLLECTING_HISTORY
-//     ...
-//
+//     NEUTRAL
 // ============================================================
 
 function calculateFinalDecision(
     symbol,
     currentSnapshot
 ) {
-
     const normalizedSymbol =
         normalizeSymbol(symbol);
-
 
     const history =
         getSymbolHistory(
             normalizedSymbol
         );
 
-
     const snapshots =
         history.snapshots;
 
+    // ========================================================
+    // HISTORY
+    // ========================================================
 
     const trend200 =
         calculateTrend200(
             snapshots
         );
 
-
     const triggerHistory =
         calculateTriggerHistory(
             snapshots
         );
 
+    const combinedHistory =
+        calculateCombinedHistory(
+            trend200,
+            triggerHistory
+        );
+
+    // ========================================================
+    // CURRENT
+    // ========================================================
 
     const current200 =
         normalizeDirection(
             currentSnapshot?.trend200
         );
 
-
     const currentTrigger =
         normalizeDirection(
             currentSnapshot?.triggerDirection
         );
 
+    const currentCombined =
+        normalizeDirection(
+            currentSnapshot?.combinedDirection
+        );
 
-    let decision =
-        "NEUTRAL";
-
+    let decision = "NEUTRAL";
 
     let reason =
         "HISTORY_NOT_CONFIRMED";
 
-
-    // --------------------------------------------------------
-    // NOT ENOUGH HISTORY
-    // --------------------------------------------------------
+    // ========================================================
+    // 1. HISTORY INCOMPLETE
+    // ========================================================
 
     if (
         snapshots.length <
         REQUIRED_HISTORY_SNAPSHOTS
     ) {
-
         reason =
             "COLLECTING_HISTORY";
 
-
-    // --------------------------------------------------------
-    // CURRENT 200 NEUTRAL
-    // --------------------------------------------------------
+    // ========================================================
+    // 2. CURRENT 200 NEUTRAL
+    // ========================================================
 
     } else if (
-        current200 ===
-        "NEUTRAL"
+        current200 === "NEUTRAL"
     ) {
-
         reason =
             "CURRENT_200_TREND_NEUTRAL";
 
-
-    // --------------------------------------------------------
-    // CURRENT TRIGGER NEUTRAL
-    // --------------------------------------------------------
+    // ========================================================
+    // 3. CURRENT TRIGGER NEUTRAL
+    // ========================================================
 
     } else if (
-        currentTrigger ===
-        "NEUTRAL"
+        currentTrigger === "NEUTRAL"
     ) {
-
         reason =
             "CURRENT_TRIGGER_NEUTRAL";
 
-
-    // --------------------------------------------------------
-    // CURRENT TREND / TRIGGER DISAGREE
-    // --------------------------------------------------------
+    // ========================================================
+    // 4. CURRENT 200 + TRIGGER DISAGREE
+    // ========================================================
 
     } else if (
-        current200 !==
-        currentTrigger
+        current200 !== currentTrigger
     ) {
-
         reason =
-            "TREND_TRIGGER_DISAGREEMENT";
+            "CURRENT_TREND_TRIGGER_DISAGREEMENT";
 
-
-    // --------------------------------------------------------
-    // 200 HISTORY DOES NOT CONFIRM CURRENT DIRECTION
-    // --------------------------------------------------------
+    // ========================================================
+    // 5. CURRENT COMBINED INVALID
+    // ========================================================
 
     } else if (
-        trend200.direction !==
-        current200
+        currentCombined === "NEUTRAL"
     ) {
+        reason =
+            "CURRENT_COMBINED_NEUTRAL";
 
+    // ========================================================
+    // 6. 200 HISTORY
+    // ========================================================
+
+    } else if (
+        trend200.direction !== current200
+    ) {
         reason =
             "200_TREND_HISTORY_NOT_CONFIRMED";
 
-
-    // --------------------------------------------------------
-    // TRIGGER HISTORY DOES NOT CONFIRM CURRENT DIRECTION
-    // --------------------------------------------------------
+    // ========================================================
+    // 7. TRIGGER HISTORY
+    // ========================================================
 
     } else if (
-        triggerHistory.direction !==
-        currentTrigger
+        triggerHistory.direction !== currentTrigger
     ) {
-
         reason =
             "TRIGGER_HISTORY_NOT_CONFIRMED";
 
+    // ========================================================
+    // 8. COMBINED HISTORY
+    // ========================================================
 
-    // --------------------------------------------------------
-    // FINAL CONFIRMED DECISION
-    // --------------------------------------------------------
+    } else if (
+        combinedHistory.direction !== currentCombined
+    ) {
+        reason =
+            "COMBINED_HISTORY_NOT_CONFIRMED";
+
+    // ========================================================
+    // 9. FINAL CONFIRMED
+    // ========================================================
 
     } else {
-
         decision =
-            current200;
-
+            currentCombined;
 
         reason =
             decision === "LONG"
-                ? "LONG_CONFIRMED"
-                : "SHORT_CONFIRMED";
+                ? "COMBINED_LONG_CONFIRMED"
+                : "COMBINED_SHORT_CONFIRMED";
     }
 
-
     return {
-
         symbol:
             normalizedSymbol,
 
         decision,
-
         reason,
 
+        // ====================================================
+        // HISTORY
+        // ====================================================
 
         history: {
-
             snapshots:
                 snapshots.length,
 
@@ -1270,39 +1283,79 @@ function calculateFinalDecision(
                 REQUIRED_HISTORY_SNAPSHOTS
         },
 
+        // ====================================================
+        // 200 HISTORY
+        // ====================================================
 
         trend200,
 
+        // ====================================================
+        // TRIGGER HISTORY
+        // ====================================================
 
         triggerHistory,
 
+        // ====================================================
+        // COMBINED HISTORY
+        // ====================================================
+
+        combinedHistory,
+
+        // ====================================================
+        // CURRENT
+        // ====================================================
 
         current: {
-
             trend200:
                 current200,
 
             trigger:
-                currentTrigger
+                currentTrigger,
+
+            combined:
+                currentCombined
         },
 
+        // ====================================================
+        // THRESHOLDS
+        // ====================================================
 
         thresholds: {
-
             trendMinPercent:
                 TREND_MIN_PERCENT,
 
             triggerMinPercent:
-                TRIGGER_MIN_PERCENT
+                TRIGGER_MIN_PERCENT,
+
+            longMinImbalance:
+                Number(
+                    LONG_MIN_IMBALANCE
+                ),
+
+            shortMaxImbalance:
+                Number(
+                    SHORT_MAX_IMBALANCE
+                ),
+
+            minBidAskRatio:
+                Number(
+                    MIN_BID_ASK_RATIO
+                ),
+
+            minAskBidRatio:
+                Number(
+                    MIN_ASK_BID_RATIO
+                )
         },
 
+        // ====================================================
+        // CONFIRMATION
+        // ====================================================
 
         confirmation: {
-
-            depths:
-                [
-                    ...CONFIRMATION_DEPTHS
-                ],
+            depths: [
+                ...CONFIRMATION_DEPTHS
+            ],
 
             required:
                 REQUIRED_PASSED_DEPTHS,
@@ -1313,34 +1366,24 @@ function calculateFinalDecision(
     };
 }
 
-
 // ============================================================
-// PROCESS ORDER-BOOK RESULT
+// PROCESS ORDER-FLOW HISTORY
 //
-// Every call = ONE automatic scanner snapshot.
+// EVERY CALL:
 //
-// PROCESS:
+//     1. Take one snapshot
+//     2. Store it
+//     3. Check cycle
 //
-//     1. Create snapshot
-//     2. Store snapshot
-//     3. Show current history count
-//     4. If history incomplete:
+// INCOMPLETE:
 //
-//            return COLLECTING_HISTORY
+//     return COLLECTING_HISTORY
 //
-//     5. If history complete:
+// COMPLETE:
 //
-//            calculate FINAL DECISION
-//
-//     6. RESET HISTORY
-//
-//     7. Start fresh cycle
-//
-// IMPORTANT:
-//
-// The completed history is included in the returned decision
-// even though the internal storage is reset immediately.
-//
+//     calculate final decision
+//     reset history
+//     return decision
 // ============================================================
 
 function processOrderFlowHistory(
@@ -1348,20 +1391,17 @@ function processOrderFlowHistory(
     orderBookResult,
     now = Date.now()
 ) {
-
     const normalizedSymbol =
         normalizeSymbol(symbol);
-
 
     const history =
         getSymbolHistory(
             normalizedSymbol
         );
 
-
-    // --------------------------------------------------------
-    // ALWAYS COLLECT THIS SCAN
-    // --------------------------------------------------------
+    // ========================================================
+    // ADD EXACTLY ONE SNAPSHOT
+    // ========================================================
 
     addSnapshot(
         normalizedSymbol,
@@ -1369,22 +1409,12 @@ function processOrderFlowHistory(
         now
     );
 
-
-    // --------------------------------------------------------
-    // LATEST SNAPSHOT
-    // --------------------------------------------------------
-
-    const latestSnapshot =
-        history.snapshots[
-            history.snapshots.length - 1
-        ];
-
-
-    // --------------------------------------------------------
-    // CURRENT CONDITIONS
+    // ========================================================
+    // CURRENT SNAPSHOT
     //
-    // Recalculate from the SAME fresh order book.
-    // --------------------------------------------------------
+    // Same order-book data.
+    // NO second WEEX request.
+    // ========================================================
 
     const currentSnapshot =
         createHistorySnapshot(
@@ -1392,24 +1422,41 @@ function processOrderFlowHistory(
             now
         );
 
+    const latestSnapshot =
+        history.snapshots[
+            history.snapshots.length - 1
+        ];
 
-    // --------------------------------------------------------
-    // CHECK IF CYCLE IS COMPLETE
-    // --------------------------------------------------------
+    // ========================================================
+    // CHECK CYCLE
+    // ========================================================
 
     const cycleComplete =
         history.snapshots.length >=
         REQUIRED_HISTORY_SNAPSHOTS;
 
-
-    // --------------------------------------------------------
-    // HISTORY STILL COLLECTING
-    // --------------------------------------------------------
+    // ========================================================
+    // STILL COLLECTING
+    // ========================================================
 
     if (!cycleComplete) {
+        const trend200 =
+            calculateTrend200(
+                history.snapshots
+            );
+
+        const triggerHistory =
+            calculateTriggerHistory(
+                history.snapshots
+            );
+
+        const combinedHistory =
+            calculateCombinedHistory(
+                trend200,
+                triggerHistory
+            );
 
         return {
-
             symbol:
                 normalizedSymbol,
 
@@ -1419,9 +1466,7 @@ function processOrderFlowHistory(
             reason:
                 "COLLECTING_HISTORY",
 
-
             history: {
-
                 snapshots:
                     history.snapshots.length,
 
@@ -1438,49 +1483,55 @@ function processOrderFlowHistory(
                     REQUIRED_HISTORY_SNAPSHOTS
             },
 
+            trend200,
 
-            trend200:
-                calculateTrend200(
-                    history.snapshots
-                ),
+            triggerHistory,
 
-
-            triggerHistory:
-                calculateTriggerHistory(
-                    history.snapshots
-                ),
-
+            combinedHistory,
 
             current: {
-
                 trend200:
-                    normalizeDirection(
-                        currentSnapshot.trend200
-                    ),
+                    currentSnapshot.trend200,
 
                 trigger:
-                    normalizeDirection(
-                        currentSnapshot.triggerDirection
-                    )
+                    currentSnapshot.triggerDirection,
+
+                combined:
+                    currentSnapshot.combinedDirection
             },
 
-
             thresholds: {
-
                 trendMinPercent:
                     TREND_MIN_PERCENT,
 
                 triggerMinPercent:
-                    TRIGGER_MIN_PERCENT
+                    TRIGGER_MIN_PERCENT,
+
+                longMinImbalance:
+                    Number(
+                        LONG_MIN_IMBALANCE
+                    ),
+
+                shortMaxImbalance:
+                    Number(
+                        SHORT_MAX_IMBALANCE
+                    ),
+
+                minBidAskRatio:
+                    Number(
+                        MIN_BID_ASK_RATIO
+                    ),
+
+                minAskBidRatio:
+                    Number(
+                        MIN_ASK_BID_RATIO
+                    )
             },
 
-
             confirmation: {
-
-                depths:
-                    [
-                        ...CONFIRMATION_DEPTHS
-                    ],
+                depths: [
+                    ...CONFIRMATION_DEPTHS
+                ],
 
                 required:
                     REQUIRED_PASSED_DEPTHS,
@@ -1488,7 +1539,6 @@ function processOrderFlowHistory(
                 rule:
                     `${REQUIRED_PASSED_DEPTHS}_OF_${CONFIRMATION_DEPTHS.length}`
             },
-
 
             collected:
                 true,
@@ -1501,34 +1551,37 @@ function processOrderFlowHistory(
         };
     }
 
-
     // ========================================================
-    // HISTORY COMPLETE
-    //
-    // THIS IS THE FINAL DECISION POINT.
+    // CYCLE COMPLETE
     // ========================================================
 
     console.log("");
+
     console.log(
         "============================================================"
     );
+
     console.log(
         `ORDER FLOW HISTORY COMPLETE: ${normalizedSymbol}`
     );
+
     console.log(
         `HISTORY CYCLE: ${REQUIRED_HISTORY_SNAPSHOTS}/${REQUIRED_HISTORY_SNAPSHOTS}`
     );
+
     console.log(
         "CALCULATING FINAL DECISION..."
     );
+
     console.log(
         "============================================================"
     );
 
-
-    // --------------------------------------------------------
-    // CALCULATE FINAL DECISION BEFORE RESET
-    // --------------------------------------------------------
+    // ========================================================
+    // FINAL DECISION
+    //
+    // MUST HAPPEN BEFORE RESET.
+    // ========================================================
 
     const decision =
         calculateFinalDecision(
@@ -1536,41 +1589,57 @@ function processOrderFlowHistory(
             currentSnapshot
         );
 
+    // ========================================================
+    // FINAL LOG
+    // ========================================================
 
-    // --------------------------------------------------------
-    // SAVE COMPLETED HISTORY COUNT
-    // --------------------------------------------------------
+    console.log(
+        `200 HISTORY: ${decision.trend200.longPercent}% LONG / ${decision.trend200.shortPercent}% SHORT / ${decision.trend200.neutralPercent}% NEUTRAL`
+    );
+
+    console.log(
+        `TRIGGER HISTORY: ${decision.triggerHistory.longPercent}% LONG / ${decision.triggerHistory.shortPercent}% SHORT / ${decision.triggerHistory.neutralPercent}% NEUTRAL`
+    );
+
+    console.log(
+        `COMBINED HISTORY: ${decision.combinedHistory.direction}`
+    );
+
+    console.log(
+        `CURRENT 200: ${decision.current.trend200}`
+    );
+
+    console.log(
+        `CURRENT TRIGGER: ${decision.current.trigger}`
+    );
+
+    console.log(
+        `CURRENT COMBINED: ${decision.current.combined}`
+    );
+
+    console.log(
+        `FINAL DECISION: ${decision.decision}`
+    );
+
+    console.log(
+        `FINAL REASON: ${decision.reason}`
+    );
+
+    // ========================================================
+    // SAVE COMPLETED COUNT
+    // ========================================================
 
     const completedSnapshots =
         history.snapshots.length;
 
-
-    // --------------------------------------------------------
-    // RESET HISTORY
-    //
-    // IMPORTANT:
-    //
-    // The completed decision above is returned to the caller.
-    //
-    // Internal history is now completely empty.
-    //
-    // Next scanner call starts:
-    //
-    //     1/10
-    //
-    // or:
-    //
-    //     1/60
-    //
-    // depending on config.
-    // --------------------------------------------------------
+    // ========================================================
+    // RESET
+    // ========================================================
 
     history.snapshots = [];
 
-
     history.lastCollectedAt =
         now;
-
 
     console.log(
         `ORDER FLOW HISTORY RESET: ${normalizedSymbol}`
@@ -1584,18 +1653,18 @@ function processOrderFlowHistory(
         `NEXT CYCLE: 0/${REQUIRED_HISTORY_SNAPSHOTS}`
     );
 
+    console.log(
+        "============================================================"
+    );
 
-    // --------------------------------------------------------
-    // RETURN COMPLETED DECISION
-    // --------------------------------------------------------
+    // ========================================================
+    // RETURN FINAL DECISION
+    // ========================================================
 
     return {
-
         ...decision,
 
-
         history: {
-
             ...decision.history,
 
             snapshots:
@@ -1614,7 +1683,6 @@ function processOrderFlowHistory(
                 true
         },
 
-
         collected:
             true,
 
@@ -1629,44 +1697,30 @@ function processOrderFlowHistory(
     };
 }
 
-
 // ============================================================
-// GET HISTORY
-//
-// Returns CURRENT unfinished cycle.
-//
-// After a completed decision:
-//
-//     snapshots = 0
-//
+// GET CURRENT HISTORY
 // ============================================================
 
 function getHistory(symbol) {
-
     const normalizedSymbol =
         normalizeSymbol(symbol);
-
 
     const history =
         getSymbolHistory(
             normalizedSymbol
         );
 
-
     cleanupHistory(
         normalizedSymbol
     );
 
-
     return {
-
         symbol:
             normalizedSymbol,
 
-        snapshots:
-            [
-                ...history.snapshots
-            ],
+        snapshots: [
+            ...history.snapshots
+        ],
 
         count:
             history.snapshots.length,
@@ -1683,46 +1737,37 @@ function getHistory(symbol) {
     };
 }
 
-
 // ============================================================
-// CLEAR HISTORY
+// CLEAR ONE HISTORY
 // ============================================================
 
 function clearHistory(symbol) {
-
     const normalizedSymbol =
         normalizeSymbol(symbol);
-
 
     historyBySymbol.delete(
         normalizedSymbol
     );
 
-
     return true;
 }
-
 
 // ============================================================
 // CLEAR ALL HISTORY
 // ============================================================
 
 function clearAllHistory() {
-
     historyBySymbol.clear();
 
     return true;
 }
-
 
 // ============================================================
 // STATUS
 // ============================================================
 
 function getHistoryStatus() {
-
     const result = {};
-
 
     for (
         const [
@@ -1731,12 +1776,9 @@ function getHistoryStatus() {
         ]
         of historyBySymbol.entries()
     ) {
-
         cleanupHistory(symbol);
 
-
         result[symbol] = {
-
             snapshots:
                 history.snapshots.length,
 
@@ -1752,17 +1794,14 @@ function getHistoryStatus() {
         };
     }
 
-
     return result;
 }
-
 
 // ============================================================
 // EXPORTS
 // ============================================================
 
 module.exports = {
-
     HISTORY_INTERVAL_MS,
 
     REQUIRED_HISTORY_SNAPSHOTS,
@@ -1776,7 +1815,6 @@ module.exports = {
     CONFIRMATION_DEPTHS,
 
     REQUIRED_PASSED_DEPTHS,
-
 
     normalizeDirection,
 
@@ -1792,6 +1830,8 @@ module.exports = {
 
     calculateTriggerHistory,
 
+    calculateCombinedHistory,
+
     calculateCurrentTrigger,
 
     calculateFinalDecision,
@@ -1806,4 +1846,3 @@ module.exports = {
 
     getHistoryStatus
 };
-

@@ -93,10 +93,11 @@ const ORDER_BOOK_DEPTH =
 // ------------------------------------------------------------
 
 const LONG_MIN_IMBALANCE =
-    0.04;
+    0.05;
 
 const SHORT_MAX_IMBALANCE =
-    -0.04;
+    -0.05
+
 
 
 // ------------------------------------------------------------
@@ -105,18 +106,18 @@ const SHORT_MAX_IMBALANCE =
 //
 // LONG:
 //
-//     BID / ASK >= 1.03
+//     BID / ASK >= 1.005
 //
 // SHORT:
 //
-//     ASK / BID >= 1.03
+//     ASK / BID >= 1.005
 //
 
 const MIN_BID_ASK_RATIO =
-    1.03;
+    1.005;
 
 const MIN_ASK_BID_RATIO =
-    1.03;
+    1.005;
 
 
 // ============================================================

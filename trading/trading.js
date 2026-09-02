@@ -14,6 +14,8 @@ const {
     MIN_ASK_BID_RATIO,
 
     ORDER_BOOK_CONFIRMATION_REQUIRED,
+
+    AUTO_TRADING_HISTORY_MINUTES,
 } = require("../config/config");
 
 
@@ -108,26 +110,6 @@ function releaseTradingLock(symbol) {
 
 // ============================================================
 // ORDER BOOK ENTRY CONFIRMATION
-// ============================================================
-//
-// OLD / MANUAL ENTRY FILTER
-//
-// This is kept for normal processSignal() usage.
-//
-// Automatic order-flow trading can skip this check because
-// orderFlowHistory.js already performed the complete decision.
-//
-// Current depths:
-//
-//     15
-//     20
-//     30
-//     60
-//
-// Required:
-//
-//     3 OF 4
-//
 // ============================================================
 
 async function checkEntryOrderBook(
@@ -301,20 +283,6 @@ async function checkEntryOrderBook(
 // ============================================================
 // OPEN MARKET POSITION
 // ============================================================
-//
-// options.skipOrderBook = true
-//
-// Used by the new 10-minute history system.
-//
-// When false:
-//
-//     Fresh order-book check
-//
-// When true:
-//
-//     History already approved the trade
-//
-// ============================================================
 
 async function openMarketPosition(
     symbol,
@@ -388,7 +356,7 @@ async function openMarketPosition(
 
         console.log(
             "Reason:",
-            "10-MINUTE ORDER FLOW HISTORY ALREADY CONFIRMED"
+            `${AUTO_TRADING_HISTORY_MINUTES}-MINUTE ORDER FLOW HISTORY ALREADY CONFIRMED`
         );
 
     }
@@ -580,7 +548,7 @@ async function openMarketPosition(
     console.log(
         "Entry confirmation:",
         options.skipOrderBook
-            ? "10-MINUTE HISTORY"
+            ? `${AUTO_TRADING_HISTORY_MINUTES}-MINUTE HISTORY`
             : `${orderBookCheck.confirmationCount}/4`
     );
 
@@ -629,18 +597,6 @@ async function openMarketPosition(
 // ============================================================
 // PROCESS SIGNAL
 // ============================================================
-//
-// This remains the main execution function.
-//
-// options.skipOrderBook:
-//
-//     false = normal fresh order-book check
-//
-//     true = history system already approved the entry
-//
-// CLOSE is NEVER order-book filtered.
-//
-// ============================================================
 
 async function processSignal(
     symbol,
@@ -682,7 +638,7 @@ async function processSignal(
     ) {
 
         throw new Error(
-            "Action must be LONG, SHORT, CLOSE, CLOSE_LONG or CLOSE_SHORT."
+            "Action must be LONG, SHORT, CLOSE, CLOSE_LONG, CLOSE_SHORT."
         );
 
     }
@@ -786,7 +742,6 @@ async function processSignal(
             action === "CLOSE_SHORT"
         ) {
 
-
             // ------------------------------------------------
             // ALREADY FLAT
             // ------------------------------------------------
@@ -808,6 +763,9 @@ async function processSignal(
 
                     action:
                         "ALREADY_FLAT",
+
+                    traded:
+                        false,
 
                 };
 
@@ -837,6 +795,9 @@ async function processSignal(
 
                     action:
                         "NO_ACTION",
+
+                    traded:
+                        false,
 
                     reason:
                         `CLOSE_LONG_RECEIVED_BUT_POSITION_IS_${current.direction}`,
@@ -872,6 +833,9 @@ async function processSignal(
 
                     action:
                         "NO_ACTION",
+
+                    traded:
+                        false,
 
                     reason:
                         `CLOSE_SHORT_RECEIVED_BUT_POSITION_IS_${current.direction}`,
@@ -946,6 +910,9 @@ async function processSignal(
                             ? "CLOSED_SHORT"
                             : "CLOSED",
 
+                traded:
+                    true,
+
                 result:
                     closeResult,
 
@@ -976,6 +943,9 @@ async function processSignal(
 
                 action:
                     "NO_ACTION",
+
+                traded:
+                    false,
 
                 reason:
                     `ALREADY_${action}`,
@@ -1082,7 +1052,7 @@ async function processSignal(
 
                 console.log(
                     "Entry confirmation:",
-                    "10-MINUTE ORDER FLOW HISTORY"
+                    `${AUTO_TRADING_HISTORY_MINUTES}-MINUTE ORDER FLOW HISTORY`
                 );
 
             } else {
@@ -1130,6 +1100,9 @@ async function processSignal(
 
                     action:
                         `REVERSAL_TO_${action}_BLOCKED`,
+
+                    traded:
+                        true,
 
                     reason:
                         openResult.reason,
@@ -1183,6 +1156,9 @@ async function processSignal(
                 action:
                     `REVERSED_TO_${action}`,
 
+                traded:
+                    true,
+
                 close:
                     closeResult,
 
@@ -1215,7 +1191,7 @@ async function processSignal(
         ) {
 
             console.log(
-                "Using 10-minute order-flow history."
+                `Using ${AUTO_TRADING_HISTORY_MINUTES}-minute order-flow history.`
             );
 
         } else {
@@ -1269,6 +1245,9 @@ async function processSignal(
                 action:
                     "ENTRY_BLOCKED",
 
+                traded:
+                    false,
+
                 reason:
                     openResult.reason,
 
@@ -1318,6 +1297,9 @@ async function processSignal(
             action:
                 `OPENED_${action}`,
 
+            traded:
+                true,
+
             result:
                 openResult,
 
@@ -1344,31 +1326,57 @@ async function processSignal(
 // AUTOMATIC ORDER-FLOW TRADING
 // ============================================================
 //
-// New system:
+// Cycle:
 //
-//     200 LEVEL
-//          +
-//     15 / 20 / 30 / 60
-//          +
-//     10 MIN HISTORY
+//     1/10
+//     2/10
+//     ...
+//     10/10
 //          ↓
 //     FINAL DECISION
+//          ↓
+//     LONG / SHORT / NEUTRAL
+//          ↓
+//     HISTORY RESET
 //
-// No TradingView.
+// IMPORTANT:
 //
-// No second order-book check.
+// Intermediate snapshots NEVER trade.
+//
+// Only cycleComplete === true may trade.
+//
+// NEUTRAL:
+//
+//     Final NEUTRAL
+//          ↓
+//     CLOSE existing position
+//          ↓
+//     FLAT
+//          ↓
+//     Sit on hands
+//
+// LONG / SHORT:
+//
+//     Flat       -> Open
+//     Same side  -> Stay
+//     Opposite   -> Close -> Confirm FLAT -> Open new side
 //
 // ============================================================
 
 async function processAutomaticOrderFlow(
     symbol,
-    orderBookResult
+    orderBookResult,
+    options = {}
 ) {
 
     symbol =
         normalizeSymbol(
             symbol
         );
+
+
+    const tradeAllowed =
+        options.tradeAllowed !== false;
 
 
     // --------------------------------------------------------
@@ -1380,6 +1388,15 @@ async function processAutomaticOrderFlow(
             symbol,
             orderBookResult
         );
+
+
+    const requiredSnapshots =
+        decision.history?.requiredSnapshots ||
+        AUTO_TRADING_HISTORY_MINUTES;
+
+
+    const currentSnapshots =
+        decision.history?.snapshots || 0;
 
 
     // --------------------------------------------------------
@@ -1446,7 +1463,14 @@ async function processAutomaticOrderFlow(
 
     console.log(
         "HISTORY:",
-        `${decision.history.snapshots}/10`
+        `${currentSnapshots}/${requiredSnapshots}`
+    );
+
+    console.log(
+        "CYCLE COMPLETE:",
+        decision.cycleComplete
+            ? "YES"
+            : "NO"
     );
 
     console.log(
@@ -1464,16 +1488,26 @@ async function processAutomaticOrderFlow(
     );
 
 
-    // --------------------------------------------------------
-    // NEUTRAL
-    // --------------------------------------------------------
+    // ========================================================
+    // HISTORY STILL COLLECTING
+    // ========================================================
 
     if (
-        decision.decision === "NEUTRAL"
+        decision.cycleComplete !== true
     ) {
 
+        console.log("");
+
         console.log(
-            `${symbol}: NEUTRAL - NO TRADE`
+            `${symbol}: HISTORY STILL COLLECTING`
+        );
+
+        console.log(
+            `Progress: ${currentSnapshots}/${requiredSnapshots}`
+        );
+
+        console.log(
+            `${symbol}: NO TRADE`
         );
 
 
@@ -1484,9 +1518,12 @@ async function processAutomaticOrderFlow(
             symbol,
 
             action:
-                "NEUTRAL",
+                "COLLECTING_HISTORY",
 
             traded:
+                false,
+
+            cycleComplete:
                 false,
 
             decision,
@@ -1496,16 +1533,209 @@ async function processAutomaticOrderFlow(
     }
 
 
-    // --------------------------------------------------------
-    // PROCESS REAL TRADE
+    // ========================================================
+    // FINAL NEUTRAL
+    // ========================================================
+    //
+    // Neutral is actionable ONLY when the cycle is complete.
+    //
+    // Close existing position.
+    //
+    // If already flat:
+    //     remain flat.
+    //
+    // ========================================================
+
+    if (
+        decision.decision === "NEUTRAL"
+    ) {
+
+        console.log("");
+
+        console.log(
+            `${symbol}: FINAL DECISION = NEUTRAL`
+        );
+
+        console.log(
+            `${symbol}: CLOSING LIVE POSITION IF ANY`
+        );
+
+        console.log(
+            `${symbol}: SIT ON HANDS UNTIL NEXT CYCLE`
+        );
+
+
+        const closeResult =
+            await processSignal(
+                symbol,
+                "CLOSE"
+            );
+
+
+        return {
+
+            success:
+                closeResult.success,
+
+            symbol,
+
+            action:
+                closeResult.action === "ALREADY_FLAT"
+                    ? "NEUTRAL_ALREADY_FLAT"
+                    : "NEUTRAL_CLOSED",
+
+            traded:
+                closeResult.traded === true,
+
+            cycleComplete:
+                true,
+
+            decision,
+
+            result:
+                closeResult,
+
+        };
+
+    }
+
+
+    // ========================================================
+    // INVALID FINAL DECISION
+    // ========================================================
+
+    if (
+        decision.decision !== "LONG" &&
+        decision.decision !== "SHORT"
+    ) {
+
+        console.log("");
+
+        console.log(
+            `${symbol}: INVALID FINAL DECISION`
+        );
+
+        console.log(
+            "Decision:",
+            decision.decision
+        );
+
+
+        return {
+
+            success: false,
+
+            symbol,
+
+            action:
+                "INVALID_FINAL_DECISION",
+
+            traded:
+                false,
+
+            cycleComplete:
+                true,
+
+            decision,
+
+        };
+
+    }
+
+
+    // ========================================================
+    // 1-HOUR TRADE DELAY
+    // ========================================================
     //
     // IMPORTANT:
     //
-    // skipOrderBook = true
+    // History was still collected.
     //
-    // Because the history system already checked the
-    // order book.
-    // --------------------------------------------------------
+    // The completed decision exists.
+    //
+    // But a new LONG/SHORT action is blocked while the
+    // symbol cooldown is active.
+    //
+    // ========================================================
+
+    if (
+        !tradeAllowed
+    ) {
+
+        console.log("");
+
+        console.log(
+            `${symbol}: FINAL DECISION = ${decision.decision}`
+        );
+
+        console.log(
+            `${symbol}: TRADE COOLDOWN ACTIVE`
+        );
+
+        console.log(
+            `${symbol}: FINAL DECISION NOT EXECUTED`
+        );
+
+        console.log(
+            `${symbol}: HISTORY CYCLE HAS BEEN RESET`
+        );
+
+
+        return {
+
+            success: true,
+
+            symbol,
+
+            action:
+                "TRADE_COOLDOWN",
+
+            traded:
+                false,
+
+            cycleComplete:
+                true,
+
+            decision,
+
+        };
+
+    }
+
+
+    // ========================================================
+    // EXECUTE FINAL LONG / SHORT
+    // ========================================================
+
+    console.log("");
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        `EXECUTING FINAL ORDER-FLOW DECISION: ${symbol}`
+    );
+
+    console.log(
+        "DECISION:",
+        decision.decision
+    );
+
+    console.log(
+        "HISTORY:",
+        `${currentSnapshots}/${requiredSnapshots}`
+    );
+
+    console.log(
+        "TRADE ALLOWED:",
+        "YES"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
 
     const result =
         await processSignal(
@@ -1515,6 +1745,17 @@ async function processAutomaticOrderFlow(
                 skipOrderBook: true
             }
         );
+
+
+    // --------------------------------------------------------
+    // DETERMINE ACTUAL TRADE
+    // --------------------------------------------------------
+
+    const actualTrade =
+        result.action === "OPENED_LONG" ||
+        result.action === "OPENED_SHORT" ||
+        result.action === "REVERSED_TO_LONG" ||
+        result.action === "REVERSED_TO_SHORT";
 
 
     return {
@@ -1528,7 +1769,10 @@ async function processAutomaticOrderFlow(
             result.action,
 
         traded:
-            result.success === true,
+            actualTrade,
+
+        cycleComplete:
+            true,
 
         decision,
 
@@ -1596,7 +1840,8 @@ function getStatusConfig() {
 
             enabled: true,
 
-            windowMinutes: 10,
+            windowMinutes:
+                AUTO_TRADING_HISTORY_MINUTES,
 
             collectionIntervalMinutes: 1,
 
@@ -1604,7 +1849,8 @@ function getStatusConfig() {
 
             triggerMinPercent: 60,
 
-            minimumSnapshots: 5,
+            minimumSnapshots:
+                AUTO_TRADING_HISTORY_MINUTES,
 
             confirmationDepths: [
                 15,

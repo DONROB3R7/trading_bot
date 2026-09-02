@@ -126,9 +126,9 @@ const MIN_ASK_BID_RATIO =
 // Four independent depth confirmations:
 //
 //     15 levels
+//     20 levels
 //     30 levels
 //     60 levels
-//     90 levels
 //
 // The trade requires:
 //
@@ -172,17 +172,39 @@ const TRADING_ENABLED =
 // AUTOMATIC ORDER-BOOK TRADING
 // ============================================================
 //
-// When enabled:
+// The automatic trader:
 //
-// Every 1 hour:
+// 1. Collects order-flow snapshots
+// 2. Builds the configured history
+// 3. Waits until the history is complete
+// 4. Calculates ONE final decision
+// 5. Processes LONG / SHORT / NEUTRAL
+// 6. Resets the history
+// 7. Starts a completely new cycle
 //
-// 1. Load available WEEX symbols
-// 2. Read fresh order book
-// 3. Calculate imbalance
-// 4. Decide LONG / SHORT / NEUTRAL
-// 5. Process the signal
-// 6. Respect existing-position logic
-// 7. Never open both directions
+// Example:
+//
+//     AUTO_TRADING_HISTORY_MINUTES = 60
+//
+// means:
+//
+//     1/60
+//     2/60
+//     ...
+//     60/60
+//     ↓
+//     FINAL DECISION
+//     ↓
+//     RESET
+//     ↓
+//     0/60
+//
+// You can test:
+//
+//     10
+//     20
+//     30
+//     60
 //
 
 const AUTO_TRADING_ENABLED =
@@ -190,21 +212,53 @@ const AUTO_TRADING_ENABLED =
 
 
 // ============================================================
-// AUTOMATIC TRADING INTERVAL
+// AUTOMATIC SNAPSHOT INTERVAL
 // ============================================================
 //
-// 60 minutes = 1 hour
+// The automatic trader collects one order-book snapshot
+// approximately every 1 minute.
+//
+// Therefore:
+//
+//     10 history minutes = 10 snapshots
+//     20 history minutes = 20 snapshots
+//     30 history minutes = 30 snapshots
+//     60 history minutes = 60 snapshots
+//
+// Keep this at 1 minute for the current design.
 //
 
 const AUTO_TRADING_INTERVAL_MS =
-    60 * 60 * 1000;
+    60 * 1000;
+
+
+// ============================================================
+// AUTOMATIC HISTORY LENGTH
+// ============================================================
+//
+// HOW MANY MINUTES / SNAPSHOTS BEFORE A FINAL DECISION?
+//
+// TEST VALUES:
+//
+//     10 = 10 minute decision cycle
+//     20 = 20 minute decision cycle
+//     30 = 30 minute decision cycle
+//     60 = 60 minute decision cycle
+//
+// Recommended live value:
+//
+//     60
+//
+
+const AUTO_TRADING_HISTORY_MINUTES =
+    10;
 
 
 // ============================================================
 // MAXIMUM TRADES PER CYCLE
 // ============================================================
 //
-// Prevents one hourly scan from opening/reversing
+// Prevents one completed history cycle from opening/reversing
 // too many positions.
 //
 
@@ -216,7 +270,17 @@ const AUTO_TRADING_MAX_TRADES_PER_CYCLE =
 // SYMBOL DELAY
 // ============================================================
 //
-// Intentional 1-hour delay between symbols.
+// Intentional 1-hour delay between actual trades on the
+// same symbol.
+//
+// IMPORTANT:
+//
+// This does NOT control history collection.
+//
+// History continues collecting normally.
+//
+// This only controls how frequently the same symbol can
+// execute another trade.
 //
 
 const AUTO_TRADING_SYMBOL_DELAY_MS =
@@ -227,10 +291,10 @@ const AUTO_TRADING_SYMBOL_DELAY_MS =
 // AUTOMATIC TRADER SAFETY
 // ============================================================
 //
-// Minimum imbalance difference between LONG and SHORT.
+// Minimum direction requirement.
 //
-// Normally LONG and SHORT cannot both pass because
-// the thresholds are positive/negative.
+// true = automatic trader requires a valid LONG or SHORT
+//        direction before opening a position.
 //
 
 const AUTO_TRADING_REQUIRE_DIRECTION =
@@ -344,6 +408,8 @@ module.exports = {
 
     AUTO_TRADING_INTERVAL_MS,
 
+    AUTO_TRADING_HISTORY_MINUTES,
+
     AUTO_TRADING_MAX_TRADES_PER_CYCLE,
 
     AUTO_TRADING_SYMBOL_DELAY_MS,
@@ -373,3 +439,4 @@ module.exports = {
     API_PASSPHRASE
 
 };
+

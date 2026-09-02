@@ -36,12 +36,6 @@ let automaticTraderNextRun = null;
 
 // ============================================================
 // PER-SYMBOL TRADE DELAY
-//
-// This is the IMPORTANT 1-hour cooldown.
-//
-// The scanner still runs every minute.
-// A symbol can only create a new automatic trade
-// once this delay has passed.
 // ============================================================
 
 const lastProcessedSymbol = new Map();
@@ -73,15 +67,20 @@ function symbolIsReady(symbol) {
 // ============================================================
 // AUTOMATIC TRADER RUN
 //
+// Scanner:
+//     Every 1 minute
+//
+// History:
+//     One fresh snapshot every minute
+//
+// FINAL DECISION:
+//     ONLY when history cycle is complete
+//
+// Trade delay:
+//     1 hour per symbol
+//
 // IMPORTANT:
-//
-// This function runs every minute.
-//
-// History needs one fresh order-book snapshot
-// every minute.
-//
-// The 1-hour delay is handled separately
-// by lastProcessedSymbol.
+//     The 1-hour delay does NOT stop history collection.
 // ============================================================
 
 async function runAutomaticTrader() {
@@ -171,19 +170,6 @@ async function runAutomaticTrader() {
 
         for (const symbol of symbols) {
 
-            if (
-                tradesProcessed >=
-                AUTO_TRADING_MAX_TRADES_PER_CYCLE
-            ) {
-
-                console.log(
-                    "MAX TRADES PER SCAN REACHED"
-                );
-
-                break;
-            }
-
-
             try {
 
                 console.log("");
@@ -207,23 +193,72 @@ async function runAutomaticTrader() {
                 // ANALYZE BOTH DIRECTIONS
                 // ------------------------------------------------
 
-                const orderBookResult =
+                const analysis =
                     analyzeOrderBookSnapshot(
                         snapshot
                     );
 
 
                 // ------------------------------------------------
-                // PROCESS HISTORY + FINAL DECISION
+                // BUILD COMPLETE ORDER-BOOK RESULT
+                // ------------------------------------------------
+
+                const orderBookResult = {
+
+                    symbol,
+
+                    snapshot,
+
+                    analysis
+
+                };
+
+
+                // ------------------------------------------------
+                // CHECK WHETHER THIS SYMBOL MAY TRADE
                 //
-                // This function decides whether enough
-                // history exists to trade.
+                // IMPORTANT:
+                //
+                // History collection ALWAYS continues.
+                //
+                // This only controls whether a completed cycle
+                // is allowed to execute a new trade.
+                // ------------------------------------------------
+
+                const tradeAllowed =
+                    symbolIsReady(symbol);
+
+
+                if (!tradeAllowed) {
+
+                    console.log(
+                        `TRADE COOLDOWN ACTIVE: ${symbol}`
+                    );
+
+                    console.log(
+                        "HISTORY WILL CONTINUE COLLECTING"
+                    );
+                }
+
+
+                // ------------------------------------------------
+                // PROCESS HISTORY
+                //
+                // processAutomaticOrderFlow() is responsible for:
+                //
+                // 1. Adding snapshot
+                // 2. Checking cycle completion
+                // 3. Making final decision only at N/N
+                // 4. Executing only when allowed
                 // ------------------------------------------------
 
                 const result =
                     await processAutomaticOrderFlow(
                         symbol,
-                        orderBookResult
+                        orderBookResult,
+                        {
+                            tradeAllowed
+                        }
                     );
 
 
@@ -231,18 +266,57 @@ async function runAutomaticTrader() {
 
 
                 // ------------------------------------------------
-                // TRADE DETECTED
-                //
-                // Only start the 1-hour symbol delay when
-                // LONG or SHORT was actually decided.
+                // RESULT INFORMATION
+                // ------------------------------------------------
+
+                if (!result) {
+
+                    console.log(
+                        `AUTOMATIC NO RESULT: ${symbol}`
+                    );
+
+                    continue;
+                }
+
+
+                // ------------------------------------------------
+                // HISTORY STILL COLLECTING
                 // ------------------------------------------------
 
                 if (
-                    result &&
-                    (
-                        result.decision === "LONG" ||
-                        result.decision === "SHORT"
-                    )
+                    result.cycleComplete !== true
+                ) {
+
+                    console.log(
+                        `AUTOMATIC HISTORY COLLECTING: ${symbol}`
+                    );
+
+                    continue;
+                }
+
+
+                // ------------------------------------------------
+                // FINAL CYCLE DECISION
+                // ------------------------------------------------
+
+                console.log(
+                    `FINAL CYCLE COMPLETE: ${symbol}`
+                );
+
+                console.log(
+                    `FINAL DECISION: ${result.decision?.decision || result.decision}`
+                );
+
+
+                // ------------------------------------------------
+                // ACTUAL TRADE
+                //
+                // Only count a trade when the automatic
+                // processing explicitly says it traded.
+                // ------------------------------------------------
+
+                if (
+                    result.traded === true
                 ) {
 
                     tradesProcessed++;
@@ -254,14 +328,36 @@ async function runAutomaticTrader() {
 
 
                     console.log(
-                        `AUTOMATIC TRADE DECISION: ${symbol} ${result.decision}`
+                        `AUTOMATIC TRADE EXECUTED: ${symbol}`
                     );
 
                 } else {
 
                     console.log(
-                        `AUTOMATIC NO TRADE: ${symbol}`
+                        `AUTOMATIC FINAL DECISION - NO NEW TRADE: ${symbol}`
                     );
+                }
+
+
+                // ------------------------------------------------
+                // MAX TRADES PER SCAN
+                //
+                // IMPORTANT:
+                //
+                // We check this AFTER processing the symbol so
+                // history is not accidentally stopped.
+                // ------------------------------------------------
+
+                if (
+                    tradesProcessed >=
+                    AUTO_TRADING_MAX_TRADES_PER_CYCLE
+                ) {
+
+                    console.log(
+                        "MAX TRADES PER SCAN REACHED"
+                    );
+
+                    break;
                 }
 
 
@@ -309,7 +405,6 @@ async function runAutomaticTrader() {
 
         automaticTraderRunning = false;
 
-
         automaticTraderNextRun =
             new Date(
                 Date.now() +
@@ -322,11 +417,14 @@ async function runAutomaticTrader() {
 // ============================================================
 // START AUTOMATIC TRADER
 //
-// Scanner = every 1 minute.
+// Scanner:
+//     Every 1 minute
 //
-// DO NOT use the 1-hour trade delay here.
+// History:
+//     Continues every minute
 //
-// The 1-hour delay is per symbol.
+// Trade delay:
+//     1 hour per symbol
 // ============================================================
 
 function startAutomaticTrader() {
@@ -438,3 +536,4 @@ module.exports = {
 
     getAutomaticTraderStatus
 };
+

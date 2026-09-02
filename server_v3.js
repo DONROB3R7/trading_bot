@@ -49,7 +49,9 @@ const {
 const {
     runAutomaticTrader,
     startAutomaticTrader,
-    getAutomaticTraderStatus
+    getAutomaticTraderStatus,
+    getLatestAutomaticDecision,
+    getFinalDecisionSession
 } = require("./services/automaticTrader");
 
 const {
@@ -58,6 +60,11 @@ const {
     CONFIRMATION_DEPTHS,
     WEEX_REQUEST_DEPTH
 } = require("./filters/orderBook");
+
+const {
+    getHistory,
+    getHistoryStatus
+} = require("./filters/orderFlowHistory");
 
 const {
     section,
@@ -183,6 +190,230 @@ function getOrderBookStats() {
 
 
 // ============================================================
+// DASHBOARD ORDER FLOW HISTORY
+//
+// IMPORTANT:
+//
+// READ ONLY.
+//
+// This does NOT:
+//
+// - create snapshots
+// - run the history engine
+// - run automatic trading
+// - change trading logic
+// - change managed symbols
+//
+// getHistory() gives the current collection state.
+//
+// getLatestAutomaticDecision() gives the latest completed
+// automatic calculation.
+//
+// This allows the dashboard to keep showing the completed
+// 20/20 cycle even after the history engine resets to 0/20
+// for the next cycle.
+// ============================================================
+
+function getDashboardOrderFlowHistory() {
+
+    const historyStatus =
+        getHistoryStatus() || {};
+
+    const symbols =
+        new Set([
+            ...managedList(),
+            ...Object.keys(historyStatus)
+        ]);
+
+    const result = {};
+
+    for (const rawSymbol of symbols) {
+
+        const symbol =
+            normalizeSymbol(
+                rawSymbol
+            );
+
+        if (!symbol) {
+            continue;
+        }
+
+        try {
+
+            const history =
+                getHistory(
+                    symbol
+                ) || {};
+
+            const status =
+                historyStatus[symbol] || {};
+
+            const latestDecision =
+                getLatestAutomaticDecision(
+                    symbol
+                );
+
+            const completed =
+                latestDecision &&
+                typeof latestDecision === "object"
+                    ? latestDecision
+                    : null;
+
+            result[symbol] = {
+
+                symbol,
+
+                managed:
+                    managedSymbols.has(
+                        symbol
+                    ),
+
+                // ------------------------------------------------
+                // CURRENT / ACTIVE HISTORY
+                // ------------------------------------------------
+
+                history,
+
+                status: {
+
+                    ...status,
+
+                    snapshots:
+                        status.snapshots ??
+                        history.count ??
+                        0,
+
+                    requiredSnapshots:
+                        status.requiredSnapshots ??
+                        history.requiredSnapshots ??
+                        20,
+
+                    cycleComplete:
+                        status.cycleComplete ??
+                        history.cycleComplete ??
+                        false,
+
+                    lastCollectedAt:
+                        status.lastCollectedAt ??
+                        history.lastCollectedAt ??
+                        null
+                },
+
+                // ------------------------------------------------
+                // LAST COMPLETED CYCLE
+                // ------------------------------------------------
+
+                completedCycle:
+                    completed
+                        ? {
+
+                            history:
+                                completed.history ??
+                                null,
+
+                            trend200:
+                                completed.trend200 ??
+                                null,
+
+                            triggerHistory:
+                                completed.triggerHistory ??
+                                null,
+
+                            combinedHistory:
+                                completed.combinedHistory ??
+                                null,
+
+                            current:
+                                completed.current ??
+                                null,
+
+                            thresholds:
+                                completed.thresholds ??
+                                null,
+
+                            confirmation:
+                                completed.confirmation ??
+                                null,
+
+                            decision:
+                                completed.decision ??
+                                completed.finalDecision ??
+                                "NEUTRAL",
+
+                            reason:
+                                completed.reason ??
+                                "WAITING_FOR_AUTOMATIC_SCAN",
+
+                            cycleComplete:
+                                true
+
+                        }
+                        : null,
+
+                // ------------------------------------------------
+                // EASY DASHBOARD VALUES
+                // ------------------------------------------------
+
+                decision:
+                    completed?.decision ??
+                    completed?.finalDecision ??
+                    "NEUTRAL",
+
+                reason:
+                    completed?.reason ??
+                    "WAITING_FOR_AUTOMATIC_SCAN"
+            };
+
+        } catch (error) {
+
+            console.error(
+                `DASHBOARD HISTORY ERROR: ${symbol}`,
+                error.message
+            );
+
+            result[symbol] = {
+
+                symbol,
+
+                managed:
+                    managedSymbols.has(
+                        symbol
+                    ),
+
+                history: {},
+
+                status: {
+
+                    snapshots:
+                        0,
+
+                    requiredSnapshots:
+                        20,
+
+                    cycleComplete:
+                        false,
+
+                    lastCollectedAt:
+                        null
+                },
+
+                completedCycle:
+                    null,
+
+                decision:
+                    "NEUTRAL",
+
+                reason:
+                    "HISTORY_READ_ERROR"
+            };
+        }
+    }
+
+    return result;
+}
+
+
+// ============================================================
 // 3 OF 4 CONFIRMATION
 // ============================================================
 
@@ -190,7 +421,12 @@ function getThreeOfFourConfirmation(
     multiDepth
 ) {
 
-    const depths = [15, 20, 30, 60];
+    const depths = [
+        15,
+        20,
+        30,
+        60
+    ];
 
     const passedDepths =
         depths.filter(
@@ -350,6 +586,16 @@ console.log(
 );
 
 console.log(
+    "Dashboard history:",
+    "LAST COMPLETED CYCLE AVAILABLE THROUGH /status"
+);
+
+console.log(
+    "Final decision session:",
+    "STARTS FRESH WHEN SERVER V3 STARTS"
+);
+
+console.log(
     "============================================================"
 );
 
@@ -460,8 +706,6 @@ app.post(
                 });
             }
 
-            // Send TradingView response immediately.
-
             res.status(
                 200
             ).json({
@@ -483,8 +727,6 @@ app.post(
             console.log(
                 `WEBHOOK ACK SENT: ${symbol} ${action}`
             );
-
-            // Process the signal in the background.
 
             processSignal(
                 symbol,
@@ -1300,6 +1542,73 @@ app.post(
 );
 
 
+// ============================================================
+// FINAL DECISION SESSION
+//
+// IMPORTANT:
+//
+// READ ONLY.
+//
+// This endpoint does NOT:
+//
+// - run automatic trading
+// - collect an order-book snapshot
+// - add a history snapshot
+// - modify trading
+// - modify managed symbols
+//
+// It only returns the current Server V3 session statistics.
+//
+// Session starts when Server V3 starts.
+// Session is fresh after Server V3 restart.
+// ============================================================
+
+app.get(
+    "/automatic-trader/session",
+    (
+        req,
+        res
+    ) => {
+
+        try {
+
+            const session =
+                getFinalDecisionSession();
+
+            return res.json({
+
+                success:
+                    true,
+
+                session
+            });
+
+        } catch (error) {
+
+            console.error(
+                "FINAL DECISION SESSION API ERROR:",
+                error.message
+            );
+
+            return res.status(
+                500
+            ).json({
+
+                success:
+                    false,
+
+                error:
+                    error.message
+            });
+        }
+    }
+);
+
+
+// ============================================================
+// AUTOMATIC TRADER STATUS
+// ============================================================
+
 app.get(
     "/automatic-trader/status",
     (
@@ -1344,6 +1653,220 @@ app.get(
             orderBookStats:
                 getOrderBookStats()
         });
+    }
+);
+
+
+// ============================================================
+// AUTOMATIC TRADER HISTORY
+//
+// IMPORTANT:
+//
+// This endpoint does NOT run the history engine again.
+//
+// getHistory() gives the raw/current history state.
+//
+// getLatestAutomaticDecision() gives the decision that was
+// ALREADY calculated during the latest automatic scan.
+//
+// This prevents duplicate snapshots.
+// ============================================================
+
+app.get(
+    "/automatic-trader/history",
+    (
+        req,
+        res
+    ) => {
+
+        try {
+
+            const symbol =
+                normalizeSymbol(
+                    req.query?.symbol
+                );
+
+
+            if (
+                !isSupported(
+                    symbol
+                )
+            ) {
+
+                return res.status(
+                    400
+                ).json({
+
+                    success:
+                        false,
+
+                    error:
+                        "Invalid or unavailable WEEX symbol",
+
+                    symbol
+                });
+            }
+
+
+            const history =
+                getHistory(
+                    symbol
+                );
+
+
+            const historyStatus =
+                getHistoryStatus();
+
+
+            const status =
+                historyStatus[symbol] ||
+                {
+
+                    snapshots:
+                        history.count || 0,
+
+                    requiredSnapshots:
+                        history.requiredSnapshots,
+
+                    cycleComplete:
+                        history.cycleComplete,
+
+                    lastCollectedAt:
+                        history.lastCollectedAt
+                };
+
+
+            const decision =
+                getLatestAutomaticDecision(
+                    symbol
+                );
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                symbol,
+
+                history,
+
+                status,
+
+                decision:
+
+                    decision || {
+
+                        history,
+
+                        current: {
+
+                            trend200:
+                                "NEUTRAL",
+
+                            trigger:
+                                "NEUTRAL"
+                        },
+
+                        trend200: {
+
+                            longCount:
+                                0,
+
+                            shortCount:
+                                0,
+
+                            neutralCount:
+                                0,
+
+                            longPercent:
+                                0,
+
+                            shortPercent:
+                                0,
+
+                            neutralPercent:
+                                0
+                        },
+
+                        triggerHistory: {
+
+                            longCount:
+                                0,
+
+                            shortCount:
+                                0,
+
+                            neutralCount:
+                                0,
+
+                            longPercent:
+                                0,
+
+                            shortPercent:
+                                0,
+
+                            neutralPercent:
+                                0
+                        },
+
+                        combinedHistory: {
+
+                            longCount:
+                                0,
+
+                            shortCount:
+                                0,
+
+                            neutralCount:
+                                0,
+
+                            longPercent:
+                                0,
+
+                            shortPercent:
+                                0,
+
+                            neutralPercent:
+                                0
+                        },
+
+                        decision:
+                            "NEUTRAL",
+
+                        reason:
+                            "WAITING_FOR_AUTOMATIC_SCAN"
+                    },
+
+                managed:
+                    managedSymbols.has(
+                        symbol
+                    ),
+
+                timestamp:
+                    new Date().toISOString()
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                "HISTORY API ERROR:",
+                error.message
+            );
+
+
+            return res.status(
+                500
+            ).json({
+
+                success:
+                    false,
+
+                error:
+                    error.message
+            });
+        }
     }
 );
 
@@ -1778,6 +2301,11 @@ app.get(
             const automaticStatus =
                 getAutomaticTraderStatus();
 
+
+            const orderFlowHistory =
+                getDashboardOrderFlowHistory();
+
+
             res.json({
 
                 online:
@@ -1845,6 +2373,9 @@ app.get(
                 orderFlowStatistics:
                     getOrderBookStats(),
 
+                orderFlowHistory:
+                    orderFlowHistory,
+
                 reversal:
                     "CLOSE -> CONFIRM FLAT -> FRESH 200-LEVEL SNAPSHOT -> ORDER FLOW -> OPEN",
 
@@ -1864,6 +2395,11 @@ app.get(
             });
 
         } catch (error) {
+
+            console.error(
+                "STATUS ERROR:",
+                error.message
+            );
 
             res.status(
                 500
@@ -2125,7 +2661,10 @@ app.listen(
                 );
             }
 
-            // Load current live positions.
+
+            // ------------------------------------------------
+            // LOAD CURRENT LIVE POSITIONS
+            // ------------------------------------------------
 
             if (
                 AUTO_TRADING_ENABLED &&
@@ -2154,9 +2693,62 @@ app.listen(
                 }
             }
 
-            // Start automatic trader.
+
+            // ------------------------------------------------
+            // START AUTOMATIC TRADER
+            // ------------------------------------------------
 
             startAutomaticTrader();
+
+
+            // ------------------------------------------------
+            // FINAL DECISION SESSION
+            // ------------------------------------------------
+
+            const session =
+                getFinalDecisionSession();
+
+            console.log("");
+
+            console.log(
+                "FINAL DECISION SESSION:"
+            );
+
+            console.log(
+                "Session:",
+                session.sessionNumber
+            );
+
+            console.log(
+                "Started:",
+                session.startedAt
+            );
+
+            console.log(
+                "Runtime:",
+                session.runtime
+            );
+
+            console.log(
+                "LONG:",
+                session.long
+            );
+
+            console.log(
+                "SHORT:",
+                session.short
+            );
+
+            console.log(
+                "NEUTRAL:",
+                session.neutral
+            );
+
+            console.log(
+                "TOTAL:",
+                session.total
+            );
+
 
             console.log("");
 
@@ -2213,6 +2805,30 @@ app.listen(
 
             console.log(
                 "GET /automatic-trader/status"
+            );
+
+            console.log(
+                "FINAL DECISION SESSION:"
+            );
+
+            console.log(
+                "GET /automatic-trader/session"
+            );
+
+            console.log(
+                "AUTOMATIC TRADER HISTORY:"
+            );
+
+            console.log(
+                "GET /automatic-trader/history?symbol=BTCUSDT"
+            );
+
+            console.log(
+                "DASHBOARD HISTORY:"
+            );
+
+            console.log(
+                "GET /status -> orderFlowHistory"
             );
 
             console.log(

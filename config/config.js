@@ -114,10 +114,10 @@ const SHORT_MAX_IMBALANCE =
 //
 
 const MIN_BID_ASK_RATIO =
-    1.005;
+    0.90;
 
 const MIN_ASK_BID_RATIO =
-    1.005;
+    0.90;
 
 
 // ============================================================
@@ -252,7 +252,7 @@ const AUTO_TRADING_INTERVAL_MS =
 //
 
 const AUTO_TRADING_HISTORY_MINUTES =
-    30;
+    20;
 
 
 // ============================================================
@@ -285,7 +285,7 @@ const AUTO_TRADING_MAX_TRADES_PER_CYCLE =
 //
 
 const AUTO_TRADING_SYMBOL_DELAY_MS =
-    60 * 60 * 1000;
+    10 * 60 * 1000;
 
 
 // ============================================================

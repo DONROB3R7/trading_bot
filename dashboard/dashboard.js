@@ -1589,9 +1589,16 @@ function updateStatus(
     );
 
 
+    updateHistorySymbolSelector(
+    data.automaticTrading?.managedSymbols
+    );
+
+
+
     setConnection(true);
 
 }
+
 
 
 

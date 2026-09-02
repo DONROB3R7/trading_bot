@@ -220,9 +220,11 @@ function updateMultiDepth(
             );
 
         if(needsRender){
+
             renderDepthCards(
                 configuredDepths
             );
+
         }
 
     }
@@ -411,5 +413,564 @@ function updateMultiDepth(
             `Failed: ${failedDepths}`;
 
     }
+
+} // CLOSE updateMultiDepth()
+
+
+// ============================================================
+// FINAL DECISION SESSION
+// ============================================================
+
+let finalDecisionSessionData = null;
+
+
+// ============================================================
+// LOAD FINAL DECISION SESSION
+// ============================================================
+
+async function loadFinalDecisionSession(){
+
+    try{
+
+        const response =
+            await fetch(
+                "/automatic-trader/session",
+                {
+                    cache: "no-store"
+                }
+            );
+
+        if(!response.ok){
+
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+
+        }
+
+        const data =
+            await response.json();
+
+        if(
+            !data ||
+            data.success !== true ||
+            !data.session
+        ){
+
+            throw new Error(
+                "Invalid final-decision session response"
+            );
+
+        }
+
+        finalDecisionSessionData =
+            data.session;
+
+        renderFinalDecisionSession();
+
+    }catch(error){
+
+        console.error(
+            "FINAL DECISION SESSION ERROR:",
+            error
+        );
+
+    }
+
+}
+
+
+// ============================================================
+// FORMAT SESSION RUNTIME
+// ============================================================
+
+function formatFinalDecisionRuntime(
+    runtime
+){
+
+    /*
+     * Backend already sends HH:MM:SS.
+     *
+     * IMPORTANT:
+     * No client-side timer.
+     * Dashboard refreshes once per minute.
+     */
+
+    if(
+        typeof runtime === "string" &&
+        /^\d{2}:\d{2}:\d{2}$/.test(runtime)
+    ){
+
+        return runtime;
+
+    }
+
+    return "00:00:00";
+
+}
+
+
+// ============================================================
+// FORMAT SESSION START TIME
+// ============================================================
+
+function formatFinalDecisionStart(
+    timestamp
+){
+
+    if(!timestamp){
+        return "--";
+    }
+
+    const date =
+        new Date(timestamp);
+
+    if(
+        Number.isNaN(
+            date.getTime()
+        )
+    ){
+
+        return "--";
+
+    }
+
+    return date.toLocaleString(
+        undefined,
+        {
+            dateStyle: "short",
+            timeStyle: "medium"
+        }
+    );
+
+}
+
+
+// ============================================================
+// FORMAT DECISION TIME
+// ============================================================
+
+function formatFinalDecisionTime(
+    timestamp
+){
+
+    if(!timestamp){
+        return "--";
+    }
+
+    const date =
+        new Date(timestamp);
+
+    if(
+        Number.isNaN(
+            date.getTime()
+        )
+    ){
+
+        return "--";
+
+    }
+
+    return date.toLocaleTimeString(
+        undefined,
+        {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit"
+        }
+    );
+
+}
+
+
+// ============================================================
+// DECISION CSS CLASS
+// ============================================================
+
+function getFinalDecisionClass(
+    decision
+){
+
+    const value =
+        String(
+            decision || ""
+        )
+        .trim()
+        .toUpperCase();
+
+    if(
+        value === "LONG"
+    ){
+
+        return "session-decision-long";
+
+    }
+
+    if(
+        value === "SHORT"
+    ){
+
+        return "session-decision-short";
+
+    }
+
+    return "session-decision-neutral";
+
+}
+
+
+// ============================================================
+// RENDER FINAL DECISION SESSION
+// ============================================================
+
+function renderFinalDecisionSession(){
+
+    if(!finalDecisionSessionData){
+        return;
+    }
+
+    const session =
+        finalDecisionSessionData;
+
+
+    /* --------------------------------------------------------
+       SESSION NUMBER
+    -------------------------------------------------------- */
+
+    const sessionNumber =
+        document.getElementById(
+            "sessionNumber"
+        );
+
+    if(sessionNumber){
+
+        sessionNumber.textContent =
+            Number(
+                session.sessionNumber || 1
+            );
+
+    }
+
+
+    /* --------------------------------------------------------
+       BOT RUNTIME
+    -------------------------------------------------------- */
+
+    const runtime =
+        document.getElementById(
+            "sessionRuntime"
+        );
+
+    if(runtime){
+
+        runtime.textContent =
+            formatFinalDecisionRuntime(
+                session.runtime
+            );
+
+    }
+
+
+    /* --------------------------------------------------------
+       LONG
+    -------------------------------------------------------- */
+
+    const long =
+        document.getElementById(
+            "sessionLong"
+        );
+
+    if(long){
+
+        long.textContent =
+            Number(
+                session.long || 0
+            );
+
+    }
+
+
+    /* --------------------------------------------------------
+       SHORT
+    -------------------------------------------------------- */
+
+    const short =
+        document.getElementById(
+            "sessionShort"
+        );
+
+    if(short){
+
+        short.textContent =
+            Number(
+                session.short || 0
+            );
+
+    }
+
+
+    /* --------------------------------------------------------
+       NEUTRAL
+    -------------------------------------------------------- */
+
+    const neutral =
+        document.getElementById(
+            "sessionNeutral"
+        );
+
+    if(neutral){
+
+        neutral.textContent =
+            Number(
+                session.neutral || 0
+            );
+
+    }
+
+
+    /* --------------------------------------------------------
+       TOTAL
+    -------------------------------------------------------- */
+
+    const total =
+        document.getElementById(
+            "sessionTotal"
+        );
+
+    if(total){
+
+        total.textContent =
+            Number(
+                session.total || 0
+            );
+
+    }
+
+
+    /* --------------------------------------------------------
+       SESSION START
+    -------------------------------------------------------- */
+
+    const startedAt =
+        document.getElementById(
+            "sessionStartedAt"
+        );
+
+    if(startedAt){
+
+        startedAt.textContent =
+            formatFinalDecisionStart(
+                session.startedAt
+            );
+
+    }
+
+
+    /* --------------------------------------------------------
+       DECISIONS
+    -------------------------------------------------------- */
+
+    const decisions =
+        Array.isArray(
+            session.decisions
+        )
+            ? session.decisions
+            : [];
+
+    const decisionCount =
+        document.getElementById(
+            "sessionDecisionCount"
+        );
+
+    if(decisionCount){
+
+        decisionCount.textContent =
+            decisions.length;
+
+    }
+
+    renderFinalDecisionList(
+        decisions
+    );
+
+}
+
+
+// ============================================================
+// RENDER FINAL DECISION LIST
+// ============================================================
+
+function renderFinalDecisionList(
+    decisions
+){
+
+    const tableBody =
+        document.getElementById(
+            "sessionDecisionList"
+        );
+
+    if(!tableBody){
+        return;
+    }
+
+
+    /* --------------------------------------------------------
+       NO DATA
+    -------------------------------------------------------- */
+
+    if(!decisions.length){
+
+        tableBody.innerHTML = `
+
+            <tr>
+
+                <td
+                    colspan="3"
+                    class="table-empty">
+
+                    Waiting for completed cycles...
+
+                </td>
+
+            </tr>
+
+        `;
+
+        return;
+
+    }
+
+
+    /*
+     * Newest completed decision first.
+     */
+
+    const newestFirst =
+        [...decisions]
+            .reverse();
+
+
+    tableBody.innerHTML =
+        newestFirst
+            .map(
+                decision => {
+
+                    const symbol =
+                        String(
+                            decision?.symbol ||
+                            "--"
+                        )
+                        .trim()
+                        .toUpperCase();
+
+
+                    const direction =
+                        String(
+                            decision?.decision ||
+                            decision?.finalDecision ||
+                            "NEUTRAL"
+                        )
+                        .trim()
+                        .toUpperCase();
+
+
+                    const timestamp =
+                        decision?.timestamp ||
+                        decision?.createdAt ||
+                        decision?.time ||
+                        null;
+
+
+                    return `
+
+                        <tr>
+
+                            <td
+                                class="session-decision-time">
+
+                                ${formatFinalDecisionTime(
+                                    timestamp
+                                )}
+
+                            </td>
+
+
+                            <td>
+
+                                <strong>
+                                    ${symbol}
+                                </strong>
+
+                            </td>
+
+
+                            <td>
+
+                                <strong
+                                    class="${getFinalDecisionClass(
+                                        direction
+                                    )}">
+
+                                    ${direction}
+
+                                </strong>
+
+                            </td>
+
+                        </tr>
+
+                    `;
+
+                }
+            )
+            .join("");
+
+}
+
+
+// ============================================================
+// START FINAL DECISION SESSION
+// ============================================================
+
+function startFinalDecisionSession(){
+
+    /*
+     * Load immediately.
+     */
+
+    loadFinalDecisionSession();
+
+
+    /*
+     * Refresh ONCE PER MINUTE.
+     *
+     * NO 1-second timer.
+     * NO client-side runtime counter.
+     */
+
+    setInterval(
+        loadFinalDecisionSession,
+        60 * 1000
+    );
+
+}
+
+
+// ============================================================
+// START AFTER DOM IS READY
+// ============================================================
+
+if(
+    document.readyState === "loading"
+){
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        startFinalDecisionSession
+    );
+
+}else{
+
+    startFinalDecisionSession();
 
 }

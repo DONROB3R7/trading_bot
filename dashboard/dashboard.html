@@ -454,402 +454,363 @@
 </section>
 
 <!-- ============================================================
-     ORDER FLOW STATISTICS
+     HISTORY CYCLE
 ============================================================ -->
 
-<section class="panel">
+<section class="dashboard-card history-cycle-card">
 
+    <!-- HEADER -->
+    <div class="card-header">
 
-<div class="panel-header">
+        <div>
+            <div class="card-title">
+                HISTORY CYCLE
+            </div>
 
-    <div>
-
-        <div class="eyebrow">
-            LIVE SESSION DATA
+            <div class="card-subtitle">
+                Fixed order-flow history cycle
+            </div>
         </div>
 
-        <h2>
-            Order Flow Statistics
-        </h2>
+        <!-- DYNAMIC COIN SELECTOR -->
+        <select
+            id="historySymbolSelect"
+            class="history-symbol-select"
+        >
+            <option value="">
+                LOADING...
+            </option>
+        </select>
 
     </div>
 
 
-    <button
-        class="button danger"
-        onclick="resetStatistics()">
+    <!-- PROGRESS -->
+    <div class="history-progress-section">
 
-        Reset Statistics
+        <div class="history-progress-top">
 
-    </button>
+            <span>
+                COLLECTION PROGRESS
+            </span>
 
-</div>
+            <strong id="historyProgressText">
+                0 / —
+            </strong>
 
-
-
-<div class="stats-grid">
-
-
-    <div class="stat-box">
-
-        <span class="stat-label">
-            Total Checks
-        </span>
-
-        <strong id="totalChecks">
-            0
-        </strong>
-
-    </div>
+        </div>
 
 
-    <div class="stat-box accepted">
+        <div class="history-progress-track">
 
-        <span class="stat-label">
-            Accepted
-        </span>
+            <div
+                id="historyProgressBar"
+                class="history-progress-fill"
+                style="width:0%;"
+            ></div>
 
-        <strong id="accepted">
-            0
-        </strong>
+        </div>
 
     </div>
 
 
-    <div class="stat-box rejected">
+    <!-- HISTORY PERCENTAGES -->
+    <div class="history-percentages">
 
-        <span class="stat-label">
-            Rejected
-        </span>
+        <div class="history-percent-row">
 
-        <strong id="rejected">
-            0
-        </strong>
+            <span>
+                LONG
+            </span>
+
+            <strong id="historyLongPercent">
+                0%
+            </strong>
+
+        </div>
+
+
+        <div class="history-percent-row">
+
+            <span>
+                SHORT
+            </span>
+
+            <strong id="historyShortPercent">
+                0%
+            </strong>
+
+        </div>
+
+
+        <div class="history-percent-row">
+
+            <span>
+                NEUTRAL
+            </span>
+
+            <strong id="historyNeutralPercent">
+                0%
+            </strong>
+
+        </div>
 
     </div>
 
 
-    <div class="stat-box">
+    <!-- DECISION PIPELINE -->
+    <div class="history-decision">
 
-        <span class="stat-label">
-            Acceptance Rate
-        </span>
+        <div class="history-decision-row">
 
-        <strong id="acceptanceRate">
-            0%
-        </strong>
+            <span>
+                TREND
+            </span>
+
+            <strong id="historyTrendDirection">
+                NEUTRAL
+            </strong>
+
+        </div>
+
+
+        <div class="history-decision-row">
+
+            <span>
+                TRIGGER
+            </span>
+
+            <strong id="historyTriggerDirection">
+                NEUTRAL
+            </strong>
+
+        </div>
+
+
+        <div class="history-decision-row history-final-row">
+
+            <span>
+                FINAL
+            </span>
+
+            <strong id="historyFinalDirection">
+                NEUTRAL
+            </strong>
+
+        </div>
 
     </div>
 
 
-    <div class="stat-box">
-
-        <span class="stat-label">
-            Rejection Rate
-        </span>
-
-        <strong id="rejectionRate">
-            0%
-        </strong>
-
-    </div>
-
-
-</div>
-
-
-
-<div class="rate-section">
-
-
-    <div class="rate-header">
+    <!-- REASON -->
+    <div class="history-reason">
 
         <span>
-            Acceptance / Rejection
+            REASON:
         </span>
 
-        <span id="rateText">
-            0% / 0%
-        </span>
+        <strong id="historyDecisionReason">
+            —
+        </strong>
 
     </div>
-
-
-    <div class="rate-bar">
-
-        <div
-            id="acceptanceBar"
-            class="acceptance-bar">
-        </div>
-
-    </div>
-
-
-</div>
-
 
 </section>
 
-<!-- ============================================================
-     LONG / SHORT
-============================================================ -->
-
-<section class="two-columns">
-
-
-<div class="panel">
-
-    <div class="panel-header">
-
-        <h2>
-            Long Signals
-        </h2>
-
-    </div>
-
-
-    <div class="signal-stats">
-
-
-        <div>
-
-            <span>
-                Total
-            </span>
-
-            <strong id="longTotal">
-                0
-            </strong>
-
-        </div>
-
-
-        <div>
-
-            <span>
-                Accepted
-            </span>
-
-            <strong
-                id="longAccepted"
-                class="text-success">
-                0
-            </strong>
-
-        </div>
-
-
-        <div>
-
-            <span>
-                Rejected
-            </span>
-
-            <strong
-                id="longRejected"
-                class="text-danger">
-                0
-            </strong>
-
-        </div>
-
-
-        <div>
-
-            <span>
-                Acceptance
-            </span>
-
-            <strong id="longRate">
-                0%
-            </strong>
-
-        </div>
-
-
-    </div>
-
-</div>
-
-
-
-<div class="panel">
-
-    <div class="panel-header">
-
-        <h2>
-            Short Signals
-        </h2>
-
-    </div>
-
-
-    <div class="signal-stats">
-
-
-        <div>
-
-            <span>
-                Total
-            </span>
-
-            <strong id="shortTotal">
-                0
-            </strong>
-
-        </div>
-
-
-        <div>
-
-            <span>
-                Accepted
-            </span>
-
-            <strong
-                id="shortAccepted"
-                class="text-success">
-                0
-            </strong>
-
-        </div>
-
-
-        <div>
-
-            <span>
-                Rejected
-            </span>
-
-            <strong
-                id="shortRejected"
-                class="text-danger">
-                0
-            </strong>
-
-        </div>
-
-
-        <div>
-
-            <span>
-                Acceptance
-            </span>
-
-            <strong id="shortRate">
-                0%
-            </strong>
-
-        </div>
-
-
-    </div>
-
-</div>
-
-
-</section>
 
 <!-- ============================================================
-     PER COIN
+     FINAL DECISION SESSION
 ============================================================ -->
 
 <section class="panel">
 
+    <div class="panel-header">
 
-<div class="panel-header">
+        <div>
+            <div class="eyebrow">
+                FINAL DECISION SESSION
+            </div>
 
-    <div>
-
-        <div class="eyebrow">
-            LIVE SESSION DATA
+            <h2>
+                Bot Session
+            </h2>
         </div>
 
-        <h2>
-            Per-Coin Order Flow
-        </h2>
+        <div class="session-number">
+            SESSION
+            <strong id="sessionNumber">
+                1
+            </strong>
+        </div>
 
     </div>
 
 
-    <div class="table-actions">
+    <!-- ========================================================
+         BOT RUNTIME
+    ======================================================== -->
 
-        <input
-            id="coinSearch"
-            class="coin-search"
-            type="search"
-            placeholder="Search coin..."
-            autocomplete="off">
+    <div class="session-runtime">
+
+        <span class="stat-label">
+            BOT RUNTIME
+        </span>
+
+        <strong id="sessionRuntime">
+            00:00:00
+        </strong>
 
     </div>
 
-</div>
+
+    <!-- ========================================================
+         SESSION TOTALS
+    ======================================================== -->
+
+    <div class="stats-grid session-stats">
+
+        <div class="stat-box">
+
+            <span class="stat-label">
+                LONG
+            </span>
+
+            <strong
+                id="sessionLong"
+                class="text-success">
+                0
+            </strong>
+
+        </div>
 
 
+        <div class="stat-box">
 
-<div class="table-wrap">
+            <span class="stat-label">
+                SHORT
+            </span>
 
+            <strong
+                id="sessionShort"
+                class="text-danger">
+                0
+            </strong>
 
-    <table class="orderflow-table">
-
-
-        <thead>
-
-            <tr>
-
-                <th>
-                    Coin
-                </th>
-
-                <th>
-                    Long ✓
-                </th>
-
-                <th>
-                    Long ✗
-                </th>
-
-                <th>
-                    Short ✓
-                </th>
-
-                <th>
-                    Short ✗
-                </th>
-
-                <th>
-                    Total
-                </th>
-
-            </tr>
-
-        </thead>
+        </div>
 
 
-        <tbody id="orderFlowByCoin">
+        <div class="stat-box">
 
-            <tr>
+            <span class="stat-label">
+                NEUTRAL
+            </span>
 
-                <td
-                    colspan="6"
-                    class="table-empty">
+            <strong id="sessionNeutral">
+                0
+            </strong>
 
-                    Waiting for order-flow data...
-
-                </td>
-
-            </tr>
-
-        </tbody>
+        </div>
 
 
-    </table>
+        <div class="stat-box">
+
+            <span class="stat-label">
+                TOTAL
+            </span>
+
+            <strong id="sessionTotal">
+                0
+            </strong>
+
+        </div>
+
+    </div>
 
 
-</div>
+    <!-- ========================================================
+         SESSION START
+    ======================================================== -->
 
+    <div class="session-start">
+
+        Started:
+
+        <strong id="sessionStartedAt">
+            --
+        </strong>
+
+    </div>
+
+
+    <!-- ========================================================
+         COMPLETED FINAL DECISIONS
+    ======================================================== -->
+
+    <div class="session-decisions">
+
+        <div class="session-decisions-header">
+
+            <span>
+                FINAL DECISIONS
+            </span>
+
+            <span id="sessionDecisionCount">
+                0
+            </span>
+
+        </div>
+
+
+        <div class="table-wrap">
+
+            <table class="orderflow-table">
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+                            Time
+                        </th>
+
+                        <th>
+                            Coin
+                        </th>
+
+                        <th>
+                            Decision
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody id="sessionDecisionList">
+
+                    <tr>
+
+                        <td
+                            colspan="3"
+                            class="table-empty">
+                            Waiting for completed cycles...
+                        </td>
+
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
 
 </section>
+
+
+
+
 
 <!-- ============================================================
      ORDER BOOK CONFIG
@@ -1163,6 +1124,7 @@
 
 </div>
 <script src="/dashboard/dashboard.js"></script>
+<script src="/dashboard/dashboard-history.js"></script>
 <script src="/dashboard/dashboard-dynamic.js"></script>
 </body>
 </html>

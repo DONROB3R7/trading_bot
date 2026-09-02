@@ -1582,3 +1582,664 @@ max-width: 450px
 .orderbook-time {
     padding: 10px 6px;
 }
+
+
+/* ============================================================
+   HISTORY CYCLE
+============================================================ */
+
+.history-cycle-card {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+
+/* HEADER */
+
+.history-cycle-card .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.history-cycle-card .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.history-cycle-card .card-subtitle {
+    margin-top: 4px;
+    font-size: 11px;
+    opacity: 0.55;
+}
+
+
+/* STATUS */
+
+.history-cycle-card .status-badge {
+    padding: 5px 9px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+
+/* PROGRESS */
+
+.history-progress-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.history-progress-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.history-progress-top strong {
+    font-size: 13px;
+    opacity: 1;
+}
+
+.history-progress-track {
+    width: 100%;
+    height: 8px;
+
+    overflow: hidden;
+
+    border-radius: 999px;
+
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.history-progress-fill {
+    height: 100%;
+
+    border-radius: inherit;
+
+    transition: width 0.35s ease;
+    background: red;
+
+}
+
+
+/* HISTORY PERCENTAGES */
+
+.history-percentages {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.history-percent-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+
+    padding: 12px;
+
+    border-radius: 8px;
+
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.history-percent-row span {
+    font-size: 10px;
+    opacity: 0.55;
+    letter-spacing: 0.06em;
+}
+
+.history-percent-row strong {
+    font-size: 20px;
+    line-height: 1;
+}
+
+
+/* DECISION PIPELINE */
+
+.history-decision {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+
+    border-radius: 8px;
+    overflow: hidden;
+
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.history-decision-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    padding: 11px 13px;
+
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.history-decision-row span {
+    font-size: 11px;
+    opacity: 0.55;
+    letter-spacing: 0.05em;
+}
+
+.history-decision-row strong {
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.history-final-row {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+
+/* REASON */
+
+.history-reason {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+
+    padding: 11px 13px;
+
+    border-radius: 8px;
+
+    background: rgba(255, 255, 255, 0.035);
+
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.history-reason span {
+    flex-shrink: 0;
+    opacity: 0.55;
+}
+
+.history-reason strong {
+    word-break: break-word;
+}
+
+
+/* MOBILE */
+
+@media (max-width: 700px) {
+
+    .history-percentages {
+        grid-template-columns: 1fr;
+    }
+
+}
+
+/* SYMBOL SELECTOR */
+
+.history-symbol-select {
+    min-width: 110px;
+
+    padding: 7px 30px 7px 10px;
+
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 6px;
+
+    background: rgba(255, 255, 255, 0.05);
+    color: inherit;
+
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+
+    outline: none;
+    cursor: pointer;
+}
+
+.history-symbol-select:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.history-symbol-select:focus {
+    border-color: rgba(255, 255, 255, 0.20);
+}
+
+.history-symbol-select option {
+    background: #111;
+    color: #fff;
+}
+
+
+/* ============================================================
+   ORDER FLOW SESSION
+============================================================ */
+
+.orderflow-session-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+
+/* ============================================================
+   SUMMARY CARDS
+============================================================ */
+
+.orderflow-session-stat {
+    min-width: 0;
+
+    padding: 16px 18px;
+
+    border: 1px solid
+        var(--border-color, #2a2f3a);
+
+    border-radius: 10px;
+
+    background:
+        var(--panel-bg, #11151c);
+
+    box-sizing: border-box;
+
+    transition:
+        border-color 0.15s ease,
+        background 0.15s ease;
+}
+
+
+.orderflow-session-stat:hover {
+    border-color:
+        var(--border-hover, #3a414d);
+
+    background:
+        var(--panel-hover-bg, #141922);
+}
+
+
+/* ============================================================
+   SUMMARY LABEL
+============================================================ */
+
+.orderflow-session-label {
+    margin-bottom: 8px;
+
+    font-size: 11px;
+
+    font-weight: 700;
+
+    letter-spacing: 1.2px;
+
+    text-transform: uppercase;
+
+    color:
+        var(--text-secondary, #858c99);
+}
+
+
+/* ============================================================
+   SUMMARY VALUE
+============================================================ */
+
+.orderflow-session-value {
+    font-size: 18px;
+
+    font-weight: 700;
+
+    line-height: 1.4;
+
+    letter-spacing: 0.2px;
+
+    color:
+        var(--text-primary, #ffffff);
+
+    font-variant-numeric:
+        tabular-nums;
+}
+
+
+/* ============================================================
+   SEARCH
+============================================================ */
+
+.coin-search {
+    width: 180px;
+
+    height: 36px;
+
+    padding: 0 12px;
+
+    box-sizing: border-box;
+
+    border:
+        1px solid
+        var(--border-color, #2a2f3a);
+
+    border-radius: 8px;
+
+    background:
+        var(--input-bg, #0d1117);
+
+    color:
+        var(--text-primary, #ffffff);
+
+    font-family: inherit;
+
+    font-size: 13px;
+
+    outline: none;
+
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+
+.coin-search::placeholder {
+    color:
+        var(--text-secondary, #7d8491);
+}
+
+
+.coin-search:hover {
+    border-color:
+        var(--border-hover, #3a414d);
+}
+
+
+.coin-search:focus {
+    border-color:
+        var(--accent-color, #4f8cff);
+
+    box-shadow:
+        0 0 0 2px
+        rgba(79, 140, 255, 0.12);
+}
+
+
+/* ============================================================
+   ORDER FLOW TABLE
+============================================================ */
+
+.orderflow-table {
+    width: 100%;
+
+    border-collapse: collapse;
+
+    table-layout: auto;
+}
+
+
+/* ============================================================
+   TABLE HEADER
+============================================================ */
+
+.orderflow-table thead th {
+    padding: 12px 14px;
+
+    text-align: left;
+
+    font-size: 11px;
+
+    font-weight: 700;
+
+    letter-spacing: 0.8px;
+
+    text-transform: uppercase;
+
+    white-space: nowrap;
+
+    color:
+        var(--text-secondary, #858c99);
+
+    border-bottom:
+        1px solid
+        var(--border-color, #2a2f3a);
+}
+
+
+/* ============================================================
+   TABLE BODY
+============================================================ */
+
+.orderflow-table tbody td {
+    padding: 13px 14px;
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+    white-space: nowrap;
+
+    color:
+        var(--text-primary, #ffffff);
+
+    border-bottom:
+        1px solid
+        var(--border-color, #1f242d);
+
+    font-variant-numeric:
+        tabular-nums;
+}
+
+
+/* ============================================================
+   TABLE ROW
+============================================================ */
+
+.orderflow-table tbody tr {
+    transition:
+        background 0.15s ease;
+}
+
+
+.orderflow-table tbody tr:hover {
+    background:
+        rgba(255, 255, 255, 0.025);
+}
+
+
+/* ============================================================
+   COIN NAME
+============================================================ */
+
+.orderflow-table tbody td:first-child {
+    font-weight: 700;
+
+    letter-spacing: 0.3px;
+}
+
+
+/* ============================================================
+   TOTAL
+============================================================ */
+
+.orderflow-table tbody td:last-child {
+    font-weight: 800;
+}
+
+
+/* ============================================================
+   EMPTY TABLE
+============================================================ */
+
+.orderflow-table .table-empty {
+    padding: 30px 20px;
+
+    text-align: center;
+
+    font-size: 13px;
+
+    font-weight: 500;
+
+    color:
+        var(--text-secondary, #7d8491);
+}
+
+
+/* ============================================================
+   TABLE WRAPPER
+============================================================ */
+
+.orderflow-session-summary + .table-wrap {
+    overflow-x: auto;
+}
+
+
+/* ============================================================
+   RESPONSIVE
+============================================================ */
+
+@media (max-width: 800px) {
+
+    .orderflow-session-summary {
+        grid-template-columns: 1fr;
+    }
+
+}
+
+
+@media (max-width: 700px) {
+
+    .panel-header {
+        gap: 12px;
+
+        flex-wrap: wrap;
+    }
+
+
+    .table-actions {
+        width: 100%;
+    }
+
+
+    .coin-search {
+        width: 100%;
+    }
+
+
+    .table-wrap {
+        overflow-x: auto;
+    }
+
+
+    .orderflow-table {
+        min-width: 600px;
+    }
+
+}
+
+
+
+/* ============================================================
+   FINAL DECISION SESSION
+============================================================ */
+
+.session-number {
+    font-size: 11px;
+    letter-spacing: .08em;
+    opacity: .65;
+    text-align: right;
+}
+
+.session-number strong {
+    display: block;
+    margin-top: 3px;
+    font-size: 18px;
+    opacity: 1;
+}
+
+
+.session-runtime {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    margin-bottom: 18px;
+    padding-bottom: 16px;
+
+    border-bottom: 1px solid rgba(127,127,127,.15);
+}
+
+.session-runtime strong {
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+}
+
+
+.session-stats {
+    margin-bottom: 18px;
+}
+
+
+.session-start {
+    font-size: 12px;
+    opacity: .6;
+    margin-bottom: 20px;
+}
+
+
+.session-decisions {
+    margin-top: 8px;
+}
+
+
+.session-decisions-header {
+    display: flex;
+    justify-content: space-between;
+
+    margin-bottom: 10px;
+
+    font-size: 11px;
+    font-weight: 700;
+
+    letter-spacing: .1em;
+    text-transform: uppercase;
+
+    opacity: .65;
+}
+
+
+.session-decisions .orderflow-table {
+    width: 100%;
+}
+
+
+.session-decision-long {
+    font-weight: 800;
+    color: #22c55e;
+}
+
+
+.session-decision-short {
+    font-weight: 800;
+    color: #ef4444;
+}
+
+
+.session-decision-neutral {
+    font-weight: 800;
+    color: #94a3b8;
+}
+
+
+.session-decision-time {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+
+@media (max-width: 760px) {
+
+    .session-runtime {
+        align-items: flex-start;
+        gap: 8px;
+        flex-direction: column;
+    }
+
+}
+

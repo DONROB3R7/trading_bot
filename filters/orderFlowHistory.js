@@ -79,8 +79,8 @@ const REQUIRED_HISTORY_SNAPSHOTS =
 //     60% SHORT
 // ============================================================
 
-const TREND_MIN_PERCENT = 70;
-const TRIGGER_MIN_PERCENT = 60;
+const TREND_MIN_PERCENT = 40;
+const TRIGGER_MIN_PERCENT = 40;
 
 // ============================================================
 // CONFIRMATION DEPTHS

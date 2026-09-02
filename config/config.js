@@ -93,10 +93,10 @@ const ORDER_BOOK_DEPTH =
 // ------------------------------------------------------------
 
 const LONG_MIN_IMBALANCE =
-    0.05;
+    0.005
 
 const SHORT_MAX_IMBALANCE =
-    -0.05
+    -0.005
 
 
 
@@ -252,7 +252,7 @@ const AUTO_TRADING_INTERVAL_MS =
 //
 
 const AUTO_TRADING_HISTORY_MINUTES =
-    10;
+    30;
 
 
 // ============================================================

@@ -225,40 +225,121 @@ function evaluateDepth(
         };
     }
 
+
+    // ========================================================
+    // CALCULATE THIS DEPTH
+    // ========================================================
+
     const pressure =
         calculateOrderBookPressure({
             bids: depthBids,
             asks: depthAsks
         });
 
+
     let imbalancePass = false;
     let ratioPass = false;
 
+
+    // ========================================================
+    // CAVEMAN RULE
+    //
+    // FIRST:
+    //     Look at imbalance.
+    //
+    // POSITIVE:
+    //     LONG
+    //     -> check BID / ASK
+    //
+    // NEGATIVE:
+    //     SHORT
+    //     -> check ASK / BID
+    //
+    // ========================================================
+
+
     if (direction === "LONG") {
+
+        // ----------------------------------------------------
+        // LONG IMBALANCE TEST
+        // ----------------------------------------------------
 
         imbalancePass =
             pressure.imbalance >=
             Number(LONG_MIN_IMBALANCE);
 
-        ratioPass =
-            pressure.bidAskRatio >=
-            Number(MIN_BID_ASK_RATIO);
+
+        // ----------------------------------------------------
+        // ONLY AFTER LONG IMBALANCE PASSES
+        // CHECK BID / ASK
+        // ----------------------------------------------------
+
+        if (imbalancePass) {
+
+            ratioPass =
+                pressure.bidAskRatio >=
+                Number(MIN_BID_ASK_RATIO);
+        }
     }
 
+
     else if (direction === "SHORT") {
+
+        // ----------------------------------------------------
+        // SHORT IMBALANCE TEST
+        // ----------------------------------------------------
 
         imbalancePass =
             pressure.imbalance <=
             Number(SHORT_MAX_IMBALANCE);
 
-        ratioPass =
-            pressure.askBidRatio >=
-            Number(MIN_ASK_BID_RATIO);
+
+        // ----------------------------------------------------
+        // ONLY AFTER SHORT IMBALANCE PASSES
+        // CHECK ASK / BID
+        // ----------------------------------------------------
+
+        if (imbalancePass) {
+
+            ratioPass =
+                pressure.askBidRatio >=
+                Number(MIN_ASK_BID_RATIO);
+        }
     }
+
+
+    // ========================================================
+    // FINAL DEPTH RESULT
+    //
+    // BOTH MUST PASS
+    //
+    // ========================================================
 
     const filterPass =
         imbalancePass &&
         ratioPass;
+
+
+    // ========================================================
+    // CAVEMAN DEBUG
+    // ========================================================
+
+    console.log(
+        `[ORDER BOOK CHECK] ` +
+        `${direction} | ` +
+        `depth=${depth} | ` +
+        `imbalance=${pressure.imbalance.toFixed(4)} | ` +
+        `bidAsk=${pressure.bidAskRatio.toFixed(4)} | ` +
+        `askBid=${pressure.askBidRatio.toFixed(4)} | ` +
+        `imbalancePass=${imbalancePass} | ` +
+        `ratioPass=${ratioPass} | ` +
+        `filterPass=${filterPass}`
+    );
+
+
+    // ========================================================
+    // RETURN
+    // ========================================================
 
     return {
 
@@ -302,7 +383,6 @@ function evaluateDepth(
         filterPass
     };
 }
-
 
 // ============================================================
 // EVALUATE ONE DIRECTION

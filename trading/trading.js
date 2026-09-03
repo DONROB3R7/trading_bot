@@ -39,6 +39,8 @@ const {
     closePosition,
     waitForPosition,
 
+    placePositionTpSl,
+
     checkMultiDepthOrderBookSupport,
 } = require("../weex/weex");
 
@@ -276,6 +278,352 @@ async function checkEntryOrderBook(
 
 
     return result;
+
+}
+
+
+// ============================================================
+// PROTECT CONFIRMED POSITION
+// ============================================================
+//
+// IMPORTANT:
+//
+// This function is called ONLY after WEEX confirms that the
+// position actually exists.
+//
+// TP/SL therefore uses:
+//
+//     LIVE WEEX avgPrice
+//
+// and NOT:
+//
+//     TradingView price
+//     ticker price
+//     pre-order calculation price
+//
+// If TP/SL cannot be fully established, the newly opened
+// position is closed for safety.
+// ============================================================
+
+async function protectConfirmedPosition(
+    symbol,
+    direction
+) {
+
+    console.log("");
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "VERIFYING LIVE POSITION FOR TP/SL"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "Symbol:",
+        symbol
+    );
+
+    console.log(
+        "Expected direction:",
+        direction
+    );
+
+
+    const position =
+        await getCurrentPosition(
+            symbol
+        );
+
+
+    // --------------------------------------------------------
+    // SAFETY CHECK
+    // --------------------------------------------------------
+
+    if (
+        position.direction !== direction ||
+        !position.quantity ||
+        position.quantity <= 0
+    ) {
+
+        throw new Error(
+            `${symbol}: cannot establish TP/SL because live WEEX position is ${position.direction}, expected ${direction}.`
+        );
+
+    }
+
+
+    if (
+        !Number.isFinite(
+            Number(position.avgPrice)
+        ) ||
+        Number(position.avgPrice) <= 0
+    ) {
+
+        throw new Error(
+            `${symbol}: live WEEX position has invalid average entry price ${position.avgPrice}.`
+        );
+
+    }
+
+
+    console.log("");
+
+    console.log(
+        `${symbol}: LIVE POSITION CONFIRMED FOR PROTECTION`
+    );
+
+    console.log(
+        "Direction:",
+        position.direction
+    );
+
+    console.log(
+        "Quantity:",
+        position.quantity
+    );
+
+    console.log(
+        "Actual WEEX average entry:",
+        position.avgPrice
+    );
+
+
+    // --------------------------------------------------------
+    // PLACE TP + SL
+    // --------------------------------------------------------
+
+    try {
+
+        const protection =
+            await placePositionTpSl(
+                position
+            );
+
+
+        console.log("");
+
+        console.log(
+            "============================================================"
+        );
+
+        console.log(
+            "POSITION FULLY PROTECTED"
+        );
+
+        console.log(
+            "============================================================"
+        );
+
+        console.log(
+            "Symbol:",
+            symbol
+        );
+
+        console.log(
+            "Direction:",
+            direction
+        );
+
+        console.log(
+            "WEEX Entry:",
+            protection.entryPrice
+        );
+
+        console.log(
+            "Take Profit:",
+            protection.takeProfitTriggerPrice
+        );
+
+        console.log(
+            "Stop Loss:",
+            protection.stopLossTriggerPrice
+        );
+
+        console.log(
+            "Trigger:",
+            protection.triggerPriceType
+        );
+
+        console.log(
+            "============================================================"
+        );
+
+
+        return {
+
+            success: true,
+
+            position,
+
+            protection,
+
+        };
+
+    } catch (error) {
+
+        console.error("");
+
+        console.error(
+            "############################################################"
+        );
+
+        console.error(
+            "TP/SL PROTECTION FAILED"
+        );
+
+        console.error(
+            "############################################################"
+        );
+
+        console.error(
+            "Symbol:",
+            symbol
+        );
+
+        console.error(
+            "Direction:",
+            direction
+        );
+
+        console.error(
+            "Reason:",
+            error.message
+        );
+
+        console.error(
+            "The newly opened position will be CLOSED for safety."
+        );
+
+        console.error(
+            "############################################################"
+        );
+
+
+        // ----------------------------------------------------
+        // CLOSE UNPROTECTED POSITION
+        // ----------------------------------------------------
+
+        try {
+
+            const latestPosition =
+                await getCurrentPosition(
+                    symbol
+                );
+
+
+            if (
+                latestPosition.direction !== "FLAT" &&
+                latestPosition.quantity > 0
+            ) {
+
+                console.log("");
+
+                console.log(
+                    `${symbol}: CLOSING UNPROTECTED POSITION`
+                );
+
+
+                const emergencyClose =
+                    await closePosition(
+                        latestPosition
+                    );
+
+
+                const flat =
+                    await waitForPosition(
+                        symbol,
+                        "FLAT"
+                    );
+
+
+                if (
+                    !flat
+                ) {
+
+                    throw new Error(
+                        `${symbol}: emergency close was sent but WEEX did not confirm FLAT.`
+                    );
+
+                }
+
+
+                console.log("");
+
+                console.log(
+                    `${symbol}: UNPROTECTED POSITION CLOSED`
+                );
+
+
+                error.positionClosedForSafety =
+                    true;
+
+                error.emergencyClose =
+                    emergencyClose;
+
+            } else {
+
+                console.log(
+                    `${symbol}: position already FLAT during protection failure.`
+                );
+
+                error.positionClosedForSafety =
+                    true;
+
+            }
+
+        } catch (closeError) {
+
+            console.error("");
+
+            console.error(
+                "############################################################"
+            );
+
+            console.error(
+                "CRITICAL TP/SL SAFETY FAILURE"
+            );
+
+            console.error(
+                "############################################################"
+            );
+
+            console.error(
+                `${symbol}: TP/SL failed AND emergency close failed.`
+            );
+
+            console.error(
+                "Protection error:",
+                error.message
+            );
+
+            console.error(
+                "Close error:",
+                closeError.message
+            );
+
+            console.error(
+                "############################################################"
+            );
+
+
+            error.positionClosedForSafety =
+                false;
+
+            error.emergencyCloseError =
+                closeError;
+
+        }
+
+
+        throw error;
+
+    }
 
 }
 
@@ -605,9 +953,7 @@ async function processSignal(
 ) {
 
     symbol =
-        normalizeSymbol(
-            symbol
-        );
+        normalizeSymbol(symbol);
 
 
     action =
@@ -1140,11 +1486,35 @@ async function processSignal(
             }
 
 
+            // ------------------------------------------------
+            // TP / SL PROTECTION
+            // ------------------------------------------------
+            //
+            // ONLY NOW.
+            //
+            // Position is confirmed live on WEEX.
+            // protectConfirmedPosition() reads the actual
+            // WEEX average entry price.
+            // ------------------------------------------------
+
+            const protection =
+                await protectConfirmedPosition(
+                    symbol,
+                    action
+                );
+
+
             console.log("");
 
             console.log(
-                `${symbol}: REVERSAL CONFIRMED`
+                `${symbol}: REVERSAL CONFIRMED + PROTECTED`
             );
+
+
+            const finalPosition =
+                await getCurrentPosition(
+                    symbol
+                );
 
 
             return {
@@ -1165,10 +1535,10 @@ async function processSignal(
                 open:
                     openResult,
 
+                protection,
+
                 position:
-                    await getCurrentPosition(
-                        symbol
-                    ),
+                    finalPosition,
 
             };
 
@@ -1281,11 +1651,34 @@ async function processSignal(
         }
 
 
+        // ====================================================
+        // TP / SL PROTECTION
+        // ====================================================
+        //
+        // Position now exists on WEEX.
+        //
+        // protectConfirmedPosition() retrieves the LIVE
+        // position and uses its actual avgPrice.
+        // ====================================================
+
+        const protection =
+            await protectConfirmedPosition(
+                symbol,
+                action
+            );
+
+
         console.log("");
 
         console.log(
-            `${symbol}: ${action} OPEN CONFIRMED`
+            `${symbol}: ${action} OPEN CONFIRMED + PROTECTED`
         );
+
+
+        const finalPosition =
+            await getCurrentPosition(
+                symbol
+            );
 
 
         return {
@@ -1303,10 +1696,10 @@ async function processSignal(
             result:
                 openResult,
 
+            protection,
+
             position:
-                await getCurrentPosition(
-                    symbol
-                ),
+                finalPosition,
 
         };
 
@@ -1349,17 +1742,15 @@ async function processSignal(
 //
 //     Final NEUTRAL
 //          ↓
-//     CLOSE existing position
+//     NO ACTION
 //          ↓
-//     FLAT
-//          ↓
-//     Sit on hands
+//     Existing position stays
 //
 // LONG / SHORT:
 //
-//     Flat       -> Open
+//     Flat       -> Open + TP/SL
 //     Same side  -> Stay
-//     Opposite   -> Close -> Confirm FLAT -> Open new side
+//     Opposite   -> Close -> Confirm FLAT -> Open + TP/SL
 //
 // ============================================================
 
@@ -1537,12 +1928,9 @@ async function processAutomaticOrderFlow(
     // FINAL NEUTRAL
     // ========================================================
     //
-    // Neutral is actionable ONLY when the cycle is complete.
-    //
-    // Close existing position.
-    //
-    // If already flat:
-    //     remain flat.
+    // NEUTRAL NEVER CLOSES.
+    // NEUTRAL NEVER OPENS.
+    // NEUTRAL NEVER REVERSES.
     //
     // ========================================================
 
@@ -1557,43 +1945,37 @@ async function processAutomaticOrderFlow(
         );
 
         console.log(
-            `${symbol}: CLOSING LIVE POSITION IF ANY`
+            `${symbol}: NEUTRAL = NO ACTION`
         );
 
         console.log(
-            `${symbol}: SIT ON HANDS UNTIL NEXT CYCLE`
+            `${symbol}: EXISTING POSITION WILL BE KEPT`
         );
 
-
-        const closeResult =
-            await processSignal(
-                symbol,
-                "CLOSE"
-            );
+        console.log(
+            `${symbol}: NO CLOSE / NO OPEN / NO REVERSAL`
+        );
 
 
         return {
 
-            success:
-                closeResult.success,
+            success: true,
 
             symbol,
 
             action:
-                closeResult.action === "ALREADY_FLAT"
-                    ? "NEUTRAL_ALREADY_FLAT"
-                    : "NEUTRAL_CLOSED",
+                "NEUTRAL_NO_ACTION",
 
             traded:
-                closeResult.traded === true,
+                false,
 
             cycleComplete:
                 true,
 
             decision,
 
-            result:
-                closeResult,
+            reason:
+                "FINAL_NEUTRAL_NO_ACTION",
 
         };
 
@@ -1645,17 +2027,6 @@ async function processAutomaticOrderFlow(
 
     // ========================================================
     // 1-HOUR TRADE DELAY
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // History was still collected.
-    //
-    // The completed decision exists.
-    //
-    // But a new LONG/SHORT action is blocked while the
-    // symbol cooldown is active.
-    //
     // ========================================================
 
     if (

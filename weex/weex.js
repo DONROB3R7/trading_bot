@@ -24,6 +24,7 @@ const {
     ORDER_BOOK_CONFIRMATION_REQUIRED,
 } = require("../config/config");
 
+
 // ============================================================
 // INTERNAL HELPERS
 // ============================================================
@@ -42,7 +43,9 @@ const {
 
 
     function safeNumber(value, fallback = 0) {
-        const number = Number(value);
+
+        const number =
+            Number(value);
 
         return Number.isFinite(number)
             ? number
@@ -51,7 +54,9 @@ const {
 
 
     function safeInteger(value, fallback) {
-        const number = Number(value);
+
+        const number =
+            Number(value);
 
         if (
             !Number.isFinite(number) ||
@@ -66,15 +71,23 @@ const {
 
 
     function decimalPlaces(value) {
-        const stringValue = String(value);
 
-        if (stringValue.includes("e-")) {
+        const stringValue =
+            String(value);
+
+        if (
+            stringValue.includes("e-")
+        ) {
+
             return Number(
                 stringValue.split("e-")[1]
             );
         }
 
-        if (stringValue.includes(".")) {
+        if (
+            stringValue.includes(".")
+        ) {
+
             return stringValue
                 .split(".")[1]
                 .replace(/0+$/, "")
@@ -85,7 +98,10 @@ const {
     }
 
 
-    function floorToStep(value, stepSize) {
+    function floorToStep(
+        value,
+        stepSize
+    ) {
 
         if (
             !Number.isFinite(value) ||
@@ -109,7 +125,10 @@ const {
             );
 
         const multiplier =
-            Math.pow(10, precision);
+            Math.pow(
+                10,
+                precision
+            );
 
         const valueInt =
             Math.floor(
@@ -121,7 +140,9 @@ const {
                 stepSize * multiplier
             );
 
-        if (stepInt <= 0) {
+        if (
+            stepInt <= 0
+        ) {
             return value;
         }
 
@@ -151,7 +172,8 @@ const {
 
 const CONTRACT_INFO = {};
 
-const SUPPORTED_SYMBOLS = new Set();
+const SUPPORTED_SYMBOLS =
+    new Set();
 
 
 // ============================================================
@@ -169,7 +191,10 @@ function normalizeSymbol(symbol) {
         return "";
     }
 
-    if (value.includes(":")) {
+    if (
+        value.includes(":")
+    ) {
+
         value =
             value
                 .split(":")
@@ -209,12 +234,21 @@ function signRequest(
         method.toUpperCase() +
         requestPath;
 
-    if (queryString) {
-        message += "?" + queryString;
+    if (
+        queryString
+    ) {
+
+        message +=
+            "?" +
+            queryString;
     }
 
-    if (body) {
-        message += body;
+    if (
+        body
+    ) {
+
+        message +=
+            body;
     }
 
     return crypto
@@ -257,6 +291,7 @@ async function weexRequest(
             !API_PASSPHRASE
         )
     ) {
+
         throw new Error(
             "WEEX API credentials are missing."
         );
@@ -292,7 +327,10 @@ async function weexRequest(
     }
 
 
-    if (upperMethod === "POST") {
+    if (
+        upperMethod === "POST"
+    ) {
+
         body =
             JSON.stringify(
                 params || {}
@@ -315,8 +353,13 @@ async function weexRequest(
         endpoint;
 
 
-    if (queryString) {
-        url += "?" + queryString;
+    if (
+        queryString
+    ) {
+
+        url +=
+            "?" +
+            queryString;
     }
 
 
@@ -335,14 +378,20 @@ async function weexRequest(
         endpoint
     );
 
-    if (queryString) {
+    if (
+        queryString
+    ) {
+
         console.log(
             "QUERY:",
             queryString
         );
     }
 
-    if (body) {
+    if (
+        body
+    ) {
+
         console.log(
             "BODY:",
             body
@@ -351,6 +400,7 @@ async function weexRequest(
 
 
     const headers = {
+
         "Content-Type":
             "application/json",
 
@@ -359,7 +409,9 @@ async function weexRequest(
     };
 
 
-    if (!isPublicMarketEndpoint) {
+    if (
+        !isPublicMarketEndpoint
+    ) {
 
         headers["ACCESS-KEY"] =
             API_KEY;
@@ -379,8 +431,11 @@ async function weexRequest(
         await fetch(
             url,
             {
-                method: upperMethod,
+                method:
+                    upperMethod,
+
                 headers,
+
                 body:
                     upperMethod === "POST"
                         ? body
@@ -413,7 +468,9 @@ async function weexRequest(
     }
 
 
-    if (!response.ok) {
+    if (
+        !response.ok
+    ) {
 
         console.error("");
 
@@ -461,7 +518,9 @@ async function weexRequest(
 // CONTRACT NORMALIZATION
 // ============================================================
 
-function normalizeContract(contract) {
+function normalizeContract(
+    contract
+) {
 
     const quantityPrecision =
         safeInteger(
@@ -540,6 +599,39 @@ function normalizeContract(contract) {
     }
 
 
+    // --------------------------------------------------------
+    // PRICE TICK SIZE
+    // --------------------------------------------------------
+    //
+    // Used by TP/SL price formatting.
+    //
+    // If WEEX does not expose a dedicated tick field,
+    // pricePrecision becomes the fallback.
+    //
+
+    let priceStepSize =
+        Number(
+            contract?.tickSize ??
+            contract?.priceTickSize ??
+            contract?.tickSizePrice ??
+            contract?.priceStepSize ??
+            NaN
+        );
+
+
+    if (
+        !Number.isFinite(priceStepSize) ||
+        priceStepSize <= 0
+    ) {
+
+        priceStepSize =
+            Math.pow(
+                10,
+                -pricePrecision
+            );
+    }
+
+
     return {
 
         symbol:
@@ -571,6 +663,8 @@ function normalizeContract(contract) {
 
         stepSize,
 
+        priceStepSize,
+
         minOrderSize,
 
         maxOrderSize,
@@ -588,7 +682,9 @@ function normalizeContract(contract) {
 // SYMBOL SETTINGS
 // ============================================================
 
-function getSymbolSettings(symbol) {
+function getSymbolSettings(
+    symbol
+) {
 
     if (
         !SUPPORTED_SYMBOLS.has(
@@ -603,6 +699,7 @@ function getSymbolSettings(symbol) {
 
 
     return {
+
         margin:
             DEFAULT_MARGIN,
 
@@ -648,7 +745,9 @@ async function loadAllContracts() {
             : [];
 
 
-    if (contracts.length === 0) {
+    if (
+        contracts.length === 0
+    ) {
 
         throw new Error(
             "WEEX returned no contracts from exchangeInfo."
@@ -678,7 +777,9 @@ async function loadAllContracts() {
                     : [];
 
 
-        if (apiSymbols.length > 0) {
+        if (
+            apiSymbols.length > 0
+        ) {
 
             apiTradingSet =
                 new Set(
@@ -718,7 +819,9 @@ async function loadAllContracts() {
             );
 
 
-        if (!symbol) {
+        if (
+            !symbol
+        ) {
             continue;
         }
 
@@ -815,13 +918,17 @@ async function loadAllContracts() {
 // GET CONTRACT
 // ============================================================
 
-function getContract(symbol) {
+function getContract(
+    symbol
+) {
 
     const info =
         CONTRACT_INFO[symbol];
 
 
-    if (!info) {
+    if (
+        !info
+    ) {
 
         throw new Error(
             `Contract information not loaded for ${symbol}`
@@ -837,7 +944,9 @@ function getContract(symbol) {
 // REFRESH CONTRACT
 // ============================================================
 
-async function refreshContract(symbol) {
+async function refreshContract(
+    symbol
+) {
 
     const data =
         await weexRequest(
@@ -866,7 +975,9 @@ async function refreshContract(symbol) {
         );
 
 
-    if (contract) {
+    if (
+        contract
+    ) {
 
         CONTRACT_INFO[symbol] =
             normalizeContract(
@@ -883,7 +994,9 @@ async function refreshContract(symbol) {
 // GET PRICE
 // ============================================================
 
-async function getPrice(symbol) {
+async function getPrice(
+    symbol
+) {
 
     const data =
         await weexRequest(
@@ -909,7 +1022,9 @@ async function getPrice(symbol) {
             : data;
 
 
-    if (!ticker) {
+    if (
+        !ticker
+    ) {
 
         throw new Error(
             `WEEX ticker not found for ${symbol}`
@@ -975,12 +1090,6 @@ async function getPrice(symbol) {
 // ============================================================
 // GET ORDER BOOK
 // ============================================================
-//
-// ORDER_BOOK_DEPTH comes from config.js.
-//
-// The automatic multi-depth analyzer fetches one 200-level
-// snapshot and calculates 15 / 30 / 60 / 90 from it.
-//
 
 async function getOrderBook(
     symbol,
@@ -1200,23 +1309,6 @@ function calculateOrderBookLiquidity(
 // ============================================================
 // ANALYZE ONE DEPTH
 // ============================================================
-//
-// A depth passes ONLY when:
-//
-// LONG:
-//
-//     imbalance >= LONG_MIN_IMBALANCE
-//     AND
-//     bid/ask >= MIN_BID_ASK_RATIO
-//
-// SHORT:
-//
-//     imbalance <= SHORT_MAX_IMBALANCE
-//     AND
-//     ask/bid >= MIN_ASK_BID_RATIO
-//
-// Therefore a ratio failure blocks the depth.
-//
 
 function analyzeOrderBookDepth(
     data,
@@ -1244,10 +1336,6 @@ function analyzeOrderBookDepth(
             )
         );
 
-
-    // --------------------------------------------------------
-    // CLOSE BYPASS
-    // --------------------------------------------------------
 
     if (
         normalizedDirection === "CLOSE" ||
@@ -1286,10 +1374,6 @@ function analyzeOrderBookDepth(
         };
     }
 
-
-    // --------------------------------------------------------
-    // GET SIDES
-    // --------------------------------------------------------
 
     const {
         bids,
@@ -1372,10 +1456,6 @@ function analyzeOrderBookDepth(
     }
 
 
-    // --------------------------------------------------------
-    // LIQUIDITY
-    // --------------------------------------------------------
-
     const bidLiquidity =
         calculateOrderBookLiquidity(
             depthBids
@@ -1442,10 +1522,6 @@ function analyzeOrderBookDepth(
     }
 
 
-    // --------------------------------------------------------
-    // IMBALANCE
-    // --------------------------------------------------------
-
     const imbalance =
         (
             bidLiquidity -
@@ -1453,10 +1529,6 @@ function analyzeOrderBookDepth(
         ) /
         totalLiquidity;
 
-
-    // --------------------------------------------------------
-    // RATIOS
-    // --------------------------------------------------------
 
     const bidAskRatio =
         askLiquidity > 0
@@ -1471,10 +1543,6 @@ function analyzeOrderBookDepth(
                 bidLiquidity
             : Infinity;
 
-
-    // --------------------------------------------------------
-    // DIRECTION TESTS
-    // --------------------------------------------------------
 
     let imbalancePass =
         false;
@@ -1503,7 +1571,6 @@ function analyzeOrderBookDepth(
             MIN_BID_ASK_RATIO;
 
 
-        // BOTH MUST PASS
         allowed =
             imbalancePass &&
             ratioPass;
@@ -1528,7 +1595,6 @@ function analyzeOrderBookDepth(
             MIN_ASK_BID_RATIO;
 
 
-        // BOTH MUST PASS
         allowed =
             imbalancePass &&
             ratioPass;
@@ -1545,10 +1611,6 @@ function analyzeOrderBookDepth(
             "INVALID_DIRECTION";
     }
 
-
-    // --------------------------------------------------------
-    // RESULT
-    // --------------------------------------------------------
 
     return {
 
@@ -1624,11 +1686,6 @@ function analyzeOrderBookDepth(
 // ============================================================
 // ANALYZE 15 / 30 / 60 / 90
 // ============================================================
-//
-// ONE 200-level WEEX snapshot.
-//
-// No additional WEEX request for each depth.
-//
 
 function analyzeOrderBookMultiDepth(
     data,
@@ -1692,19 +1749,6 @@ function analyzeOrderBookMultiDepth(
         passed;
 
 
-    const total =
-        validDepths.length;
-
-
-    // --------------------------------------------------------
-    // 3-OF-4
-    // --------------------------------------------------------
-
-    const confirmationPassed =
-        passed >=
-        ORDER_BOOK_CONFIRMATION_REQUIRED;
-
-
     return {
 
         direction:
@@ -1742,7 +1786,8 @@ function analyzeOrderBookMultiDepth(
 
         failed,
 
-        total,
+        total:
+            validDepths.length,
 
         confirmationRequired:
             ORDER_BOOK_CONFIRMATION_REQUIRED,
@@ -1750,13 +1795,17 @@ function analyzeOrderBookMultiDepth(
         confirmationCount:
             passed,
 
-        confirmationPassed,
+        confirmationPassed:
+            passed >=
+            ORDER_BOOK_CONFIRMATION_REQUIRED,
 
         allowed:
-            confirmationPassed,
+            passed >=
+            ORDER_BOOK_CONFIRMATION_REQUIRED,
 
         reason:
-            confirmationPassed
+            passed >=
+            ORDER_BOOK_CONFIRMATION_REQUIRED
                 ? "ORDER_BOOK_3_OF_4_CONFIRMED"
                 : "ORDER_BOOK_3_OF_4_NOT_CONFIRMED",
     };
@@ -1786,10 +1835,6 @@ async function checkMultiDepthOrderBookSupport(
             .trim()
             .toUpperCase();
 
-
-    // --------------------------------------------------------
-    // CLOSE NEVER FILTERED
-    // --------------------------------------------------------
 
     if (
         normalizedDirection === "CLOSE" ||
@@ -1829,10 +1874,6 @@ async function checkMultiDepthOrderBookSupport(
     }
 
 
-    // --------------------------------------------------------
-    // FILTER DISABLED
-    // --------------------------------------------------------
-
     if (
         !ORDER_BOOK_FILTER_ENABLED
     ) {
@@ -1869,20 +1910,12 @@ async function checkMultiDepthOrderBookSupport(
     }
 
 
-    // --------------------------------------------------------
-    // ONE 200-LEVEL REQUEST
-    // --------------------------------------------------------
-
     const data =
         await getOrderBook(
             normalizedSymbol,
             ORDER_BOOK_DEPTH
         );
 
-
-    // --------------------------------------------------------
-    // ANALYZE
-    // --------------------------------------------------------
 
     const analysis =
         analyzeOrderBookMultiDepth(
@@ -1891,10 +1924,6 @@ async function checkMultiDepthOrderBookSupport(
             depths
         );
 
-
-    // --------------------------------------------------------
-    // LOG
-    // --------------------------------------------------------
 
     console.log("");
 
@@ -2056,904 +2085,8 @@ async function checkMultiDepthOrderBookSupport(
 
 
 // ============================================================
-// ORDER BOOK LEVEL NORMALIZATION
-// ============================================================
-
-function normalizeOrderBookLevel(
-    level
-) {
-
-    if (
-        Array.isArray(level)
-    ) {
-
-        const price =
-            Number(level[0]);
-
-        const quantity =
-            Number(level[1]);
-
-
-        if (
-            !Number.isFinite(price) ||
-            !Number.isFinite(quantity) ||
-            price <= 0 ||
-            quantity <= 0
-        ) {
-            return null;
-        }
-
-
-        return {
-            price,
-            quantity,
-        };
-    }
-
-
-    if (
-        level &&
-        typeof level === "object"
-    ) {
-
-        const price =
-            Number(
-                level.price ??
-                level.p ??
-                level[0]
-            );
-
-
-        const quantity =
-            Number(
-                level.quantity ??
-                level.qty ??
-                level.size ??
-                level.amount ??
-                level.q ??
-                level[1]
-            );
-
-
-        if (
-            !Number.isFinite(price) ||
-            !Number.isFinite(quantity) ||
-            price <= 0 ||
-            quantity <= 0
-        ) {
-            return null;
-        }
-
-
-        return {
-            price,
-            quantity,
-        };
-    }
-
-
-    return null;
-}
-
-
-// ============================================================
-// EXTRACT ORDER BOOK SIDES
-// ============================================================
-
-function extractOrderBookSides(
-    data
-) {
-
-    const root =
-        data?.data &&
-        typeof data.data === "object"
-            ? data.data
-            : data;
-
-
-    const bidsRaw =
-        root?.bids ??
-        root?.bid ??
-        [];
-
-
-    const asksRaw =
-        root?.asks ??
-        root?.ask ??
-        [];
-
-
-    const bids =
-        Array.isArray(bidsRaw)
-            ? bidsRaw
-                .map(
-                    normalizeOrderBookLevel
-                )
-                .filter(Boolean)
-            : [];
-
-
-    const asks =
-        Array.isArray(asksRaw)
-            ? asksRaw
-                .map(
-                    normalizeOrderBookLevel
-                )
-                .filter(Boolean)
-            : [];
-
-
-    return {
-        bids,
-        asks,
-    };
-}
-
-
-// ============================================================
-// CALCULATE ORDER BOOK LIQUIDITY
-// ============================================================
-
-function calculateOrderBookLiquidity(
-    levels
-) {
-
-    if (
-        !Array.isArray(levels)
-    ) {
-        return 0;
-    }
-
-
-    return levels.reduce(
-        (
-            total,
-            level
-        ) =>
-            total +
-            safeNumber(
-                level?.quantity,
-                0
-            ),
-        0
-    );
-}
-
-
-// ============================================================
-// ANALYZE SINGLE ORDER BOOK DEPTH
-// ============================================================
-//
-// IMPORTANT:
-//
-// Both tests are mandatory.
-//
-// LONG:
-//
-//     imbalance >= LONG_MIN_IMBALANCE
-//     AND
-//     bid/ask >= MIN_BID_ASK_RATIO
-//
-// SHORT:
-//
-//     imbalance <= SHORT_MAX_IMBALANCE
-//     AND
-//     ask/bid >= MIN_ASK_BID_RATIO
-//
-// CLOSE:
-//
-//     NEVER BLOCKED
-//
-
-function analyzeOrderBookDepth(
-    data,
-    direction,
-    depth
-) {
-
-    const normalizedDirection =
-        String(
-            direction || ""
-        )
-            .trim()
-            .toUpperCase();
-
-
-    const normalizedDepth =
-        Number(depth);
-
-
-    // --------------------------------------------------------
-    // CLOSE BYPASS
-    // --------------------------------------------------------
-
-    if (
-        normalizedDirection === "CLOSE" ||
-        normalizedDirection === "CLOSE_LONG" ||
-        normalizedDirection === "CLOSE_SHORT"
-    ) {
-
-        return {
-
-            allowed: true,
-
-            supported: true,
-
-            direction:
-                normalizedDirection,
-
-            depth:
-                normalizedDepth,
-
-            reason:
-                "CLOSE_NOT_FILTERED",
-
-            imbalance:
-                0,
-
-            bidLiquidity:
-                0,
-
-            askLiquidity:
-                0,
-
-            bidPercentage:
-                0,
-
-            askPercentage:
-                0,
-
-            bidAskRatio:
-                0,
-
-            askBidRatio:
-                0,
-
-            tests: {
-
-                imbalance:
-                    true,
-
-                ratio:
-                    true,
-
-                final:
-                    true,
-            },
-
-            thresholds: {
-
-                longImbalance:
-                    LONG_MIN_IMBALANCE,
-
-                shortImbalance:
-                    SHORT_MAX_IMBALANCE,
-
-                bidAskRatio:
-                    MIN_BID_ASK_RATIO,
-
-                askBidRatio:
-                    MIN_ASK_BID_RATIO,
-            },
-        };
-    }
-
-
-    // --------------------------------------------------------
-    // DIRECTION VALIDATION
-    // --------------------------------------------------------
-
-    if (
-        normalizedDirection !== "LONG" &&
-        normalizedDirection !== "SHORT"
-    ) {
-
-        return {
-
-            allowed: false,
-
-            supported: false,
-
-            direction:
-                normalizedDirection,
-
-            depth:
-                normalizedDepth,
-
-            reason:
-                "INVALID_DIRECTION",
-
-            imbalance:
-                0,
-
-            bidLiquidity:
-                0,
-
-            askLiquidity:
-                0,
-
-            bidPercentage:
-                0,
-
-            askPercentage:
-                0,
-
-            bidAskRatio:
-                0,
-
-            askBidRatio:
-                0,
-
-            tests: {
-
-                imbalance:
-                    false,
-
-                ratio:
-                    false,
-
-                final:
-                    false,
-            },
-        };
-    }
-
-
-    // --------------------------------------------------------
-    // EXTRACT SIDES
-    // --------------------------------------------------------
-
-    const {
-        bids,
-        asks,
-    } =
-        extractOrderBookSides(
-            data
-        );
-
-
-    if (
-        bids.length === 0 ||
-        asks.length === 0
-    ) {
-
-        return {
-
-            allowed: false,
-
-            supported: false,
-
-            direction:
-                normalizedDirection,
-
-            depth:
-                normalizedDepth,
-
-            reason:
-                "ORDER_BOOK_DATA_MISSING",
-
-            bidLevels:
-                bids.length,
-
-            askLevels:
-                asks.length,
-
-            imbalance:
-                0,
-
-            bidLiquidity:
-                0,
-
-            askLiquidity:
-                0,
-
-            bidPercentage:
-                0,
-
-            askPercentage:
-                0,
-
-            bidAskRatio:
-                0,
-
-            askBidRatio:
-                0,
-
-            tests: {
-
-                imbalance:
-                    false,
-
-                ratio:
-                    false,
-
-                final:
-                    false,
-            },
-
-            thresholds: {
-
-                longImbalance:
-                    LONG_MIN_IMBALANCE,
-
-                shortImbalance:
-                    SHORT_MAX_IMBALANCE,
-
-                bidAskRatio:
-                    MIN_BID_ASK_RATIO,
-
-                askBidRatio:
-                    MIN_ASK_BID_RATIO,
-            },
-        };
-    }
-
-
-    // --------------------------------------------------------
-    // DEPTH SLICE
-    // --------------------------------------------------------
-
-    const effectiveDepth =
-        Math.max(
-            1,
-            Math.min(
-                Number.isFinite(
-                    normalizedDepth
-                )
-                    ? Math.floor(
-                        normalizedDepth
-                    )
-                    : ORDER_BOOK_DEPTH,
-                ORDER_BOOK_DEPTH
-            )
-        );
-
-
-    const depthBids =
-        bids.slice(
-            0,
-            effectiveDepth
-        );
-
-
-    const depthAsks =
-        asks.slice(
-            0,
-            effectiveDepth
-        );
-
-
-    // --------------------------------------------------------
-    // LIQUIDITY
-    // --------------------------------------------------------
-
-    const bidLiquidity =
-        calculateOrderBookLiquidity(
-            depthBids
-        );
-
-
-    const askLiquidity =
-        calculateOrderBookLiquidity(
-            depthAsks
-        );
-
-
-    const totalLiquidity =
-        bidLiquidity +
-        askLiquidity;
-
-
-    if (
-        totalLiquidity <= 0
-    ) {
-
-        return {
-
-            allowed: false,
-
-            supported: false,
-
-            direction:
-                normalizedDirection,
-
-            depth:
-                effectiveDepth,
-
-            reason:
-                "ORDER_BOOK_LIQUIDITY_ZERO",
-
-            bidLevels:
-                depthBids.length,
-
-            askLevels:
-                depthAsks.length,
-
-            imbalance:
-                0,
-
-            bidLiquidity,
-
-            askLiquidity,
-
-            bidPercentage:
-                0,
-
-            askPercentage:
-                0,
-
-            bidAskRatio:
-                0,
-
-            askBidRatio:
-                0,
-
-            tests: {
-
-                imbalance:
-                    false,
-
-                ratio:
-                    false,
-
-                final:
-                    false,
-            },
-        };
-    }
-
-
-    // --------------------------------------------------------
-    // CALCULATIONS
-    // --------------------------------------------------------
-
-    const bidPercentage =
-        bidLiquidity /
-        totalLiquidity;
-
-
-    const askPercentage =
-        askLiquidity /
-        totalLiquidity;
-
-
-    const imbalance =
-        (
-            bidLiquidity -
-            askLiquidity
-        ) /
-        totalLiquidity;
-
-
-    const bidAskRatio =
-        askLiquidity > 0
-            ? bidLiquidity /
-                askLiquidity
-            : Infinity;
-
-
-    const askBidRatio =
-        bidLiquidity > 0
-            ? askLiquidity /
-                bidLiquidity
-            : Infinity;
-
-
-    // --------------------------------------------------------
-    // DIRECTIONAL TESTS
-    // --------------------------------------------------------
-
-    let imbalancePass =
-        false;
-
-
-    let ratioPass =
-        false;
-
-
-    let allowed =
-        false;
-
-
-    let reason =
-        "";
-
-
-    if (
-        normalizedDirection === "LONG"
-    ) {
-
-        imbalancePass =
-            imbalance >=
-            LONG_MIN_IMBALANCE;
-
-
-        ratioPass =
-            bidAskRatio >=
-            MIN_BID_ASK_RATIO;
-
-
-        allowed =
-            imbalancePass &&
-            ratioPass;
-
-
-        reason =
-            allowed
-                ? "ORDER_BOOK_SUPPORTS_LONG"
-                : "ORDER_BOOK_DOES_NOT_SUPPORT_LONG";
-
-    } else {
-
-        imbalancePass =
-            imbalance <=
-            SHORT_MAX_IMBALANCE;
-
-
-        ratioPass =
-            askBidRatio >=
-            MIN_ASK_BID_RATIO;
-
-
-        allowed =
-            imbalancePass &&
-            ratioPass;
-
-
-        reason =
-            allowed
-                ? "ORDER_BOOK_SUPPORTS_SHORT"
-                : "ORDER_BOOK_DOES_NOT_SUPPORT_SHORT";
-    }
-
-
-    // --------------------------------------------------------
-    // RESULT
-    // --------------------------------------------------------
-
-    return {
-
-        allowed,
-
-        supported:
-            allowed,
-
-        direction:
-            normalizedDirection,
-
-        depth:
-            effectiveDepth,
-
-        requestedDepth:
-            effectiveDepth,
-
-        bidLevels:
-            depthBids.length,
-
-        askLevels:
-            depthAsks.length,
-
-        bestBid:
-            depthBids[0]?.price ?? null,
-
-        bestAsk:
-            depthAsks[0]?.price ?? null,
-
-        bidLiquidity,
-
-        askLiquidity,
-
-        totalLiquidity,
-
-        bidPercentage,
-
-        askPercentage,
-
-        imbalance,
-
-        bidAskRatio,
-
-        askBidRatio,
-
-        reason,
-
-        tests: {
-
-            imbalance:
-                imbalancePass,
-
-            ratio:
-                ratioPass,
-
-            final:
-                allowed,
-        },
-
-        thresholds: {
-
-            longImbalance:
-                LONG_MIN_IMBALANCE,
-
-            shortImbalance:
-                SHORT_MAX_IMBALANCE,
-
-            bidAskRatio:
-                MIN_BID_ASK_RATIO,
-
-            askBidRatio:
-                MIN_ASK_BID_RATIO,
-        },
-    };
-}
-
-
-// ============================================================
-// ANALYZE MULTI DEPTH ORDER BOOK
-// ============================================================
-//
-// One WEEX 200-level snapshot.
-//
-// From the SAME snapshot we calculate:
-//
-//     15 levels
-//     30 levels
-//     60 levels
-//     90 levels
-//
-// This avoids four separate API requests.
-//
-
-function analyzeOrderBookMultiDepth(
-    data,
-    direction,
-    depths = [15, 30, 60, 90]
-) {
-
-    const requestedDepths =
-        Array.isArray(depths)
-            ? depths
-            : [15, 30, 60, 90];
-
-
-    const uniqueDepths =
-        [
-            ...new Set(
-                requestedDepths
-                    .map(
-                        depth =>
-                            Number(depth)
-                    )
-                    .filter(
-                        depth =>
-                            Number.isFinite(depth) &&
-                            depth > 0
-                    )
-                    .map(
-                        depth =>
-                            Math.floor(depth)
-                    )
-            )
-        ]
-            .sort(
-                (a, b) =>
-                    a - b
-            );
-
-
-    const results = {};
-
-
-    for (
-        const depth of uniqueDepths
-    ) {
-
-        results[String(depth)] =
-            analyzeOrderBookDepth(
-                data,
-                direction,
-                depth
-            );
-    }
-
-
-    const depthResults =
-        uniqueDepths.map(
-            depth =>
-                results[String(depth)]
-        );
-
-
-    const passed =
-        depthResults.filter(
-            result =>
-                result?.allowed === true
-        ).length;
-
-
-    const failed =
-        depthResults.filter(
-            result =>
-                result?.allowed !== true
-        ).length;
-
-
-    // --------------------------------------------------------
-    // 2 OF 3 / 3 OF 4 SUPPORT
-    // --------------------------------------------------------
-    //
-    // The generic confirmation count is returned here.
-    //
-    // The trading layer decides how many confirmations
-    // are required.
-    //
-    // With [15,30,60,90]:
-    //
-    // confirmationCount = number of passed depths
-    //
-    // --------------------------------------------------------
-
-    return {
-
-        direction:
-            String(
-                direction || ""
-            )
-                .trim()
-                .toUpperCase(),
-
-        requestedDepth:
-            ORDER_BOOK_DEPTH,
-
-        depths:
-            uniqueDepths,
-
-        results,
-
-        passed,
-
-        failed,
-
-        total:
-            uniqueDepths.length,
-
-        confirmationCount:
-            passed,
-
-        allPassed:
-            uniqueDepths.length > 0 &&
-            passed === uniqueDepths.length,
-
-        atLeastTwoPassed:
-            passed >= 2,
-
-        // Explicit 15 / 30 / 60 / 90 references
-        depth15:
-            results["15"] || null,
-
-        depth30:
-            results["30"] || null,
-
-        depth60:
-            results["60"] || null,
-
-        depth90:
-            results["90"] || null,
-    };
-}
-
-
-// ============================================================
 // CHECK ORDER BOOK SUPPORT
 // ============================================================
-//
-// This is the normal single-direction check.
-//
-// It uses ORDER_BOOK_DEPTH from config.js.
-//
-// IMPORTANT:
-//
-// Both imbalance AND ratio must pass.
-//
 
 async function checkOrderBookSupport(
     symbol,
@@ -2974,10 +2107,6 @@ async function checkOrderBookSupport(
             .trim()
             .toUpperCase();
 
-
-    // --------------------------------------------------------
-    // CLOSE IS NEVER FILTERED
-    // --------------------------------------------------------
 
     if (
         normalizedDirection === "CLOSE" ||
@@ -3002,10 +2131,6 @@ async function checkOrderBookSupport(
         };
     }
 
-
-    // --------------------------------------------------------
-    // FILTER DISABLED
-    // --------------------------------------------------------
 
     if (
         !ORDER_BOOK_FILTER_ENABLED
@@ -3029,20 +2154,12 @@ async function checkOrderBookSupport(
     }
 
 
-    // --------------------------------------------------------
-    // FETCH FRESH ORDER BOOK
-    // --------------------------------------------------------
-
     const data =
         await getOrderBook(
             normalizedSymbol,
             depth
         );
 
-
-    // --------------------------------------------------------
-    // ANALYZE
-    // --------------------------------------------------------
 
     const result =
         analyzeOrderBookDepth(
@@ -3052,17 +2169,9 @@ async function checkOrderBookSupport(
         );
 
 
-    // --------------------------------------------------------
-    // ATTACH SYMBOL
-    // --------------------------------------------------------
-
     result.symbol =
         normalizedSymbol;
 
-
-    // --------------------------------------------------------
-    // LOG
-    // --------------------------------------------------------
 
     console.log("");
 
@@ -3269,386 +2378,6 @@ async function checkOrderBookSupport(
 
 
 // ============================================================
-// CHECK MULTI DEPTH ORDER BOOK SUPPORT
-// ============================================================
-//
-// Fetches ONE 200-level book.
-//
-// Calculates:
-//
-//     15
-//     30
-//     60
-//     90
-//
-// from the same snapshot.
-//
-
-async function checkMultiDepthOrderBookSupport(
-    symbol,
-    direction,
-    depths = [15, 30, 60, 90]
-) {
-
-    const normalizedSymbol =
-        normalizeSymbol(
-            symbol
-        );
-
-
-    const normalizedDirection =
-        String(
-            direction || ""
-        )
-            .trim()
-            .toUpperCase();
-
-
-    // --------------------------------------------------------
-    // CLOSE BYPASS
-    // --------------------------------------------------------
-
-    if (
-        normalizedDirection === "CLOSE" ||
-        normalizedDirection === "CLOSE_LONG" ||
-        normalizedDirection === "CLOSE_SHORT"
-    ) {
-
-        return {
-
-            symbol:
-                normalizedSymbol,
-
-            direction:
-                normalizedDirection,
-
-            filterEnabled:
-                ORDER_BOOK_FILTER_ENABLED,
-
-            requestedDepth:
-                ORDER_BOOK_DEPTH,
-
-            depths,
-
-            results: {},
-
-            passed: 0,
-
-            failed: 0,
-
-            total:
-                Array.isArray(depths)
-                    ? depths.length
-                    : 0,
-
-            confirmationCount:
-                0,
-
-            confirmationPassed:
-                true,
-
-            allowed:
-                true,
-
-            reason:
-                "CLOSE_NOT_FILTERED",
-        };
-    }
-
-
-    // --------------------------------------------------------
-    // FILTER DISABLED
-    // --------------------------------------------------------
-
-    if (
-        !ORDER_BOOK_FILTER_ENABLED
-    ) {
-
-        return {
-
-            symbol:
-                normalizedSymbol,
-
-            direction:
-                normalizedDirection,
-
-            filterEnabled:
-                false,
-
-            requestedDepth:
-                ORDER_BOOK_DEPTH,
-
-            depths,
-
-            results: {},
-
-            passed: 0,
-
-            failed: 0,
-
-            total:
-                Array.isArray(depths)
-                    ? depths.length
-                    : 0,
-
-            confirmationCount:
-                0,
-
-            confirmationPassed:
-                true,
-
-            allowed:
-                true,
-
-            reason:
-                "ORDER_BOOK_FILTER_DISABLED",
-        };
-    }
-
-
-    // --------------------------------------------------------
-    // ONE 200-LEVEL REQUEST
-    // --------------------------------------------------------
-
-    const data =
-        await getOrderBook(
-            normalizedSymbol,
-            ORDER_BOOK_DEPTH
-        );
-
-
-    // --------------------------------------------------------
-    // ANALYZE 15 / 30 / 60 / 90
-    // --------------------------------------------------------
-
-    const analysis =
-        analyzeOrderBookMultiDepth(
-            data,
-            normalizedDirection,
-            depths
-        );
-
-
-    // --------------------------------------------------------
-    // DEFAULT CONFIRMATION
-    // --------------------------------------------------------
-    //
-    // The raw multi-depth result exposes the number of
-    // passed confirmations.
-    //
-    // The trading layer can decide whether it wants:
-    //
-    //     2 OF 3
-    //
-    // or:
-    //
-    //     3 OF 4
-    //
-    // etc.
-    //
-    // For the four-depth set [15,30,60,90], we expose
-    // both the raw count and a 3-of-4 confirmation.
-    //
-
-    const confirmationPassed =
-        analysis.passed >= 3;
-
-
-    // --------------------------------------------------------
-    // LOG
-    // --------------------------------------------------------
-
-    console.log("");
-
-    console.log(
-        "============================================================"
-    );
-
-    console.log(
-        `WEEX MULTI-DEPTH ORDER BOOK: ${normalizedSymbol}`
-    );
-
-    console.log(
-        "============================================================"
-    );
-
-    console.log(
-        "Direction:",
-        normalizedDirection
-    );
-
-    console.log(
-        "Source depth:",
-        ORDER_BOOK_DEPTH
-    );
-
-    console.log(
-        "Levels:",
-        analysis.depths.join(" / ")
-    );
-
-    console.log(
-        "Long imbalance threshold:",
-        LONG_MIN_IMBALANCE
-    );
-
-    console.log(
-        "Short imbalance threshold:",
-        SHORT_MAX_IMBALANCE
-    );
-
-    console.log(
-        "Bid/Ask ratio threshold:",
-        MIN_BID_ASK_RATIO
-    );
-
-    console.log(
-        "Ask/Bid ratio threshold:",
-        MIN_ASK_BID_RATIO
-    );
-
-
-    for (
-        const depth of analysis.depths
-    ) {
-
-        const result =
-            analysis.results[
-                String(depth)
-            ];
-
-
-        console.log("");
-
-        console.log(
-            `${depth} LEVELS`
-        );
-
-        console.log(
-            "Imbalance:",
-            result?.imbalance
-        );
-
-        console.log(
-            "Bid/Ask:",
-            result?.bidAskRatio
-        );
-
-        console.log(
-            "Ask/Bid:",
-            result?.askBidRatio
-        );
-
-        console.log(
-            "Imbalance test:",
-            result?.tests?.imbalance
-                ? "PASS"
-                : "FAIL"
-        );
-
-        console.log(
-            "Ratio test:",
-            result?.tests?.ratio
-                ? "PASS"
-                : "FAIL"
-        );
-
-        console.log(
-            "FINAL:",
-            result?.allowed
-                ? "PASS"
-                : "BLOCKED"
-        );
-    }
-
-
-    console.log("");
-
-    console.log(
-        "MULTI-DEPTH CONFIRMATIONS:",
-        analysis.passed,
-        "/",
-        analysis.total
-    );
-
-    console.log(
-        "3 OF 4 CONFIRMATION:",
-        confirmationPassed
-            ? "PASSED"
-            : "BLOCKED"
-    );
-
-    console.log(
-        "============================================================"
-    );
-
-
-    return {
-
-        symbol:
-            normalizedSymbol,
-
-        direction:
-            normalizedDirection,
-
-        filterEnabled:
-            ORDER_BOOK_FILTER_ENABLED,
-
-        requestedDepth:
-            ORDER_BOOK_DEPTH,
-
-        depths:
-            analysis.depths,
-
-        results:
-            analysis.results,
-
-        depth15:
-            analysis.depth15,
-
-        depth30:
-            analysis.depth30,
-
-        depth60:
-            analysis.depth60,
-
-        depth90:
-            analysis.depth90,
-
-        passed:
-            analysis.passed,
-
-        failed:
-            analysis.failed,
-
-        total:
-            analysis.total,
-
-        confirmationCount:
-            analysis.confirmationCount,
-
-        confirmationPassed,
-
-        // Useful when the caller wants a generic
-        // "at least 2 confirmations" test.
-        atLeastTwoPassed:
-            analysis.atLeastTwoPassed,
-
-        allPassed:
-            analysis.allPassed,
-
-        allowed:
-            confirmationPassed,
-
-        reason:
-            confirmationPassed
-                ? "MULTI_DEPTH_ORDER_BOOK_CONFIRMED"
-                : "MULTI_DEPTH_ORDER_BOOK_NOT_CONFIRMED",
-    };
-}
-
-
-// ============================================================
 // GET FUTURES BALANCE
 // ============================================================
 
@@ -3682,7 +2411,9 @@ async function getFuturesBalance() {
         );
 
 
-    if (!usdt) {
+    if (
+        !usdt
+    ) {
 
         throw new Error(
             "USDT futures balance not found"
@@ -3738,12 +2469,19 @@ async function getCurrentPosition(
     symbol
 ) {
 
+    const normalizedSymbol =
+        normalizeSymbol(
+            symbol
+        );
+
+
     const data =
         await weexRequest(
             "GET",
             "/capi/v3/account/position/singlePosition",
             {
-                symbol
+                symbol:
+                    normalizedSymbol
             }
         );
 
@@ -3763,7 +2501,7 @@ async function getCurrentPosition(
             item =>
                 normalizeSymbol(
                     item?.symbol
-                ) === symbol &&
+                ) === normalizedSymbol &&
                 Number(
                     item?.size ?? 0
                 ) > 0
@@ -3775,13 +2513,14 @@ async function getCurrentPosition(
     ) {
 
         console.log(
-            `${symbol}: FLAT`
+            `${normalizedSymbol}: FLAT`
         );
 
 
         return {
 
-            symbol,
+            symbol:
+                normalizedSymbol,
 
             direction:
                 "FLAT",
@@ -3800,7 +2539,7 @@ async function getCurrentPosition(
     ) {
 
         throw new Error(
-            `${symbol}: multiple active positions returned.`
+            `${normalizedSymbol}: multiple active positions returned.`
         );
     }
 
@@ -3823,7 +2562,7 @@ async function getCurrentPosition(
     ) {
 
         throw new Error(
-            `${symbol}: unknown position side ${side}`
+            `${normalizedSymbol}: unknown position side ${side}`
         );
     }
 
@@ -3842,7 +2581,8 @@ async function getCurrentPosition(
 
     const result = {
 
-        symbol,
+        symbol:
+            normalizedSymbol,
 
         direction:
             side,
@@ -3897,7 +2637,7 @@ async function getCurrentPosition(
     console.log("");
 
     console.log(
-        `${symbol} POSITION`
+        `${normalizedSymbol} POSITION`
     );
 
     console.log(
@@ -3988,7 +2728,9 @@ async function getSymbolConfig(
         configs[0];
 
 
-    if (!config) {
+    if (
+        !config
+    ) {
 
         throw new Error(
             `WEEX symbol configuration not found for ${symbol}`
@@ -4041,6 +2783,7 @@ function normalizeMarginMode(
             normalized === "CROSS" ||
             normalized === "CROSSED"
         ) {
+
             return "CROSSED";
         }
 
@@ -4048,6 +2791,7 @@ function normalizeMarginMode(
         if (
             normalized === "ISOLATED"
         ) {
+
             return "ISOLATED";
         }
     }
@@ -4257,7 +3001,9 @@ function extractStepSizeFromError(
         );
 
 
-    if (!match) {
+    if (
+        !match
+    ) {
         return null;
     }
 
@@ -4327,6 +3073,80 @@ function formatQuantity(
 
 
 // ============================================================
+// FORMAT PRICE
+// ============================================================
+//
+// TP/SL needs price precision rather than quantity precision.
+//
+// The function also supports a dedicated price tick size when
+// WEEX provides one in exchangeInfo.
+// ============================================================
+
+function formatPrice(
+    symbol,
+    price
+) {
+
+    const contract =
+        getContract(
+            symbol
+        );
+
+
+    const numericPrice =
+        Number(price);
+
+
+    if (
+        !Number.isFinite(numericPrice) ||
+        numericPrice <= 0
+    ) {
+
+        throw new Error(
+            `${symbol}: invalid price ${price}`
+        );
+    }
+
+
+    const precision =
+        Math.max(
+            0,
+            contract.pricePrecision
+        );
+
+
+    const step =
+        Number(
+            contract.priceStepSize
+        );
+
+
+    let adjusted =
+        numericPrice;
+
+
+    if (
+        Number.isFinite(step) &&
+        step > 0
+    ) {
+
+        adjusted =
+            Math.round(
+                numericPrice / step
+            ) * step;
+    }
+
+
+    return adjusted.toFixed(
+        Math.min(
+            100,
+            precision
+        )
+    );
+}
+
+
+// ============================================================
 // CALCULATE POSITION
 // ============================================================
 
@@ -4375,7 +3195,9 @@ function calculatePosition(
         );
 
 
-    if (quantity <= 0) {
+    if (
+        quantity <= 0
+    ) {
 
         throw new Error(
             `${symbol}: calculated quantity is zero.`
@@ -4618,7 +3440,9 @@ async function placeOpenOrder(
             );
 
 
-        if (!step) {
+        if (
+            !step
+        ) {
             throw error;
         }
 
@@ -4720,7 +3544,7 @@ function buildCloseOrder(
 // ============================================================
 //
 // CLOSE NEVER USES ORDER BOOK FILTER.
-//
+// ============================================================
 
 async function closePosition(
     position
@@ -4839,7 +3663,9 @@ async function closePosition(
             );
 
 
-        if (!step) {
+        if (
+            !step
+        ) {
             throw error;
         }
 
@@ -4893,6 +3719,1232 @@ async function closePosition(
 
 
 // ============================================================
+// TP/SL RESPONSE SUCCESS CHECK
+// ============================================================
+//
+// WEEX can return HTTP 200 while the business response itself
+// reports success=false.
+//
+// Therefore TP/SL must validate the actual API response.
+// ============================================================
+
+function isWeexSuccess(
+    response
+) {
+
+    if (
+        response === null ||
+        response === undefined
+    ) {
+
+        return false;
+    }
+
+
+    // --------------------------------------------------------
+    // Direct object:
+    //
+    // { success: true }
+    // --------------------------------------------------------
+
+    if (
+        typeof response === "object" &&
+        !Array.isArray(response) &&
+        response.success !== undefined
+    ) {
+
+        return response.success === true;
+    }
+
+
+    // --------------------------------------------------------
+    // Array response:
+    //
+    // [
+    //   {
+    //      success: true,
+    //      orderId: "..."
+    //   }
+    // ]
+    // --------------------------------------------------------
+
+    if (
+        Array.isArray(response)
+    ) {
+
+        if (
+            response.length === 0
+        ) {
+            return false;
+        }
+
+
+        return response.every(
+            item =>
+                item?.success === true
+        );
+    }
+
+
+    // --------------------------------------------------------
+    // Some endpoints may wrap the response in data.
+    // --------------------------------------------------------
+
+    if (
+        response?.data &&
+        typeof response.data === "object"
+    ) {
+
+        if (
+            response.data.success !== undefined
+        ) {
+
+            return (
+                response.data.success === true
+            );
+        }
+
+
+        if (
+            Array.isArray(
+                response.data
+            )
+        ) {
+
+            return (
+                response.data.length > 0 &&
+                response.data.every(
+                    item =>
+                        item?.success === true
+                )
+            );
+        }
+    }
+
+
+    return false;
+}
+
+
+// ============================================================
+// EXTRACT WEEX BUSINESS ERROR
+// ============================================================
+
+function extractWeexBusinessError(
+    response
+) {
+
+    if (
+        Array.isArray(response)
+    ) {
+
+        const failed =
+            response.find(
+                item =>
+                    item?.success !== true
+            );
+
+
+        if (
+            failed
+        ) {
+
+            return {
+
+                errorCode:
+                    failed.errorCode ??
+                    "UNKNOWN",
+
+                errorMessage:
+                    failed.errorMessage ??
+                    "WEEX rejected the request.",
+            };
+        }
+    }
+
+
+    if (
+        response &&
+        typeof response === "object"
+    ) {
+
+        if (
+            response.success === false
+        ) {
+
+            return {
+
+                errorCode:
+                    response.errorCode ??
+                    "UNKNOWN",
+
+                errorMessage:
+                    response.errorMessage ??
+                    "WEEX rejected the request.",
+            };
+        }
+
+
+        if (
+            response.data &&
+            typeof response.data === "object"
+        ) {
+
+            return extractWeexBusinessError(
+                response.data
+            );
+        }
+    }
+
+
+    return {
+
+        errorCode:
+            "UNKNOWN",
+
+        errorMessage:
+            "WEEX rejected the request.",
+    };
+}
+
+
+// ============================================================
+// NORMALIZE TP/SL TRIGGER TYPE
+// ============================================================
+
+function normalizeTpSlTriggerType() {
+
+    const value =
+        String(
+            TP_SL_TRIGGER_TYPE ||
+            "CONTRACT_PRICE"
+        )
+            .trim()
+            .toUpperCase();
+
+
+    if (
+        value === "MARK_PRICE"
+    ) {
+
+        return "MARK_PRICE";
+    }
+
+
+    return "CONTRACT_PRICE";
+}
+
+
+// ============================================================
+// CALCULATE TP/SL PRICES
+// ============================================================
+//
+// IMPORTANT:
+//
+// entryPrice is the ACTUAL confirmed WEEX average price.
+//
+// TAKE_PROFIT_PERCENT and STOP_LOSS_PERCENT are treated as
+// percentage values:
+//
+//     2.3  = 2.3%
+//     1.2  = 1.2%
+//
+// LONG:
+//
+//     TP = entry * (1 + TP%)
+//     SL = entry * (1 - SL%)
+//
+// SHORT:
+//
+//     TP = entry * (1 - TP%)
+//     SL = entry * (1 + SL%)
+// ============================================================
+
+function calculateTakeProfitStopLoss(
+    symbol,
+    direction,
+    entryPrice
+) {
+
+    const normalizedSymbol =
+        normalizeSymbol(
+            symbol
+        );
+
+
+    const normalizedDirection =
+        String(
+            direction || ""
+        )
+            .trim()
+            .toUpperCase();
+
+
+    const numericEntry =
+        Number(
+            entryPrice
+        );
+
+
+    if (
+        !Number.isFinite(numericEntry) ||
+        numericEntry <= 0
+    ) {
+
+        throw new Error(
+            `${normalizedSymbol}: invalid TP/SL entry price ${entryPrice}`
+        );
+    }
+
+
+    if (
+        normalizedDirection !== "LONG" &&
+        normalizedDirection !== "SHORT"
+    ) {
+
+        throw new Error(
+            `${normalizedSymbol}: invalid TP/SL direction ${normalizedDirection}`
+        );
+    }
+
+
+    const takeProfitPercent =
+        Number(
+            TAKE_PROFIT_PERCENT
+        );
+
+
+    const stopLossPercent =
+        Number(
+            STOP_LOSS_PERCENT
+        );
+
+
+    if (
+        !Number.isFinite(takeProfitPercent) ||
+        takeProfitPercent <= 0
+    ) {
+
+        throw new Error(
+            `${normalizedSymbol}: invalid TAKE_PROFIT_PERCENT ${TAKE_PROFIT_PERCENT}`
+        );
+    }
+
+
+    if (
+        !Number.isFinite(stopLossPercent) ||
+        stopLossPercent <= 0
+    ) {
+
+        throw new Error(
+            `${normalizedSymbol}: invalid STOP_LOSS_PERCENT ${STOP_LOSS_PERCENT}`
+        );
+    }
+
+
+    const tpMultiplier =
+        takeProfitPercent / 100;
+
+
+    const slMultiplier =
+        stopLossPercent / 100;
+
+
+    let takeProfitPrice;
+
+    let stopLossPrice;
+
+
+    if (
+        normalizedDirection === "LONG"
+    ) {
+
+        takeProfitPrice =
+            numericEntry *
+            (1 + tpMultiplier);
+
+
+        stopLossPrice =
+            numericEntry *
+            (1 - slMultiplier);
+
+    } else {
+
+        takeProfitPrice =
+            numericEntry *
+            (1 - tpMultiplier);
+
+
+        stopLossPrice =
+            numericEntry *
+            (1 + slMultiplier);
+    }
+
+
+    const formattedTakeProfit =
+        formatPrice(
+            normalizedSymbol,
+            takeProfitPrice
+        );
+
+
+    const formattedStopLoss =
+        formatPrice(
+            normalizedSymbol,
+            stopLossPrice
+        );
+
+
+    const finalTakeProfit =
+        Number(
+            formattedTakeProfit
+        );
+
+
+    const finalStopLoss =
+        Number(
+            formattedStopLoss
+        );
+
+
+    // --------------------------------------------------------
+    // SAFETY CHECK
+    // --------------------------------------------------------
+
+    if (
+        normalizedDirection === "LONG"
+    ) {
+
+        if (
+            finalTakeProfit <=
+            numericEntry
+        ) {
+
+            throw new Error(
+                `${normalizedSymbol}: calculated LONG take-profit is not above entry price.`
+            );
+        }
+
+
+        if (
+            finalStopLoss >=
+            numericEntry
+        ) {
+
+            throw new Error(
+                `${normalizedSymbol}: calculated LONG stop-loss is not below entry price.`
+            );
+        }
+
+    } else {
+
+        if (
+            finalTakeProfit >=
+            numericEntry
+        ) {
+
+            throw new Error(
+                `${normalizedSymbol}: calculated SHORT take-profit is not below entry price.`
+            );
+        }
+
+
+        if (
+            finalStopLoss <=
+            numericEntry
+        ) {
+
+            throw new Error(
+                `${normalizedSymbol}: calculated SHORT stop-loss is not above entry price.`
+            );
+        }
+    }
+
+
+    return {
+
+        symbol:
+            normalizedSymbol,
+
+        direction:
+            normalizedDirection,
+
+        entryPrice:
+            numericEntry,
+
+        takeProfitPercent,
+
+        stopLossPercent,
+
+        takeProfitPrice:
+            finalTakeProfit,
+
+        stopLossPrice:
+            finalStopLoss,
+
+        takeProfitTriggerPrice:
+            formattedTakeProfit,
+
+        stopLossTriggerPrice:
+            formattedStopLoss,
+
+        triggerPriceType:
+            normalizeTpSlTriggerType(),
+    };
+}
+
+
+// ============================================================
+// BUILD TP/SL ORDER
+// ============================================================
+//
+// WEEX V3:
+//
+// POST /capi/v3/placeTpSlOrder
+//
+// quantity 0 = full position
+// executePrice 0 = market execution
+// reduceOnly true = protection can only reduce the position
+// ============================================================
+
+function buildTpSlOrder(
+    symbol,
+    direction,
+    planType,
+    triggerPrice,
+    clientAlgoId
+) {
+
+    const normalizedSymbol =
+        normalizeSymbol(
+            symbol
+        );
+
+
+    const normalizedDirection =
+        String(
+            direction || ""
+        )
+            .trim()
+            .toUpperCase();
+
+
+    const normalizedPlanType =
+        String(
+            planType || ""
+        )
+            .trim()
+            .toUpperCase();
+
+
+    if (
+        normalizedDirection !== "LONG" &&
+        normalizedDirection !== "SHORT"
+    ) {
+
+        throw new Error(
+            `${normalizedSymbol}: invalid TP/SL position side ${normalizedDirection}`
+        );
+    }
+
+
+    if (
+        normalizedPlanType !== "TAKE_PROFIT" &&
+        normalizedPlanType !== "STOP_LOSS"
+    ) {
+
+        throw new Error(
+            `${normalizedSymbol}: invalid TP/SL plan type ${normalizedPlanType}`
+        );
+    }
+
+
+    return {
+
+        symbol:
+            normalizedSymbol,
+
+        clientAlgoId,
+
+        planType:
+            normalizedPlanType,
+
+        triggerPrice:
+            String(triggerPrice),
+
+        executePrice:
+            "0",
+
+        quantity:
+            "0",
+
+        positionSide:
+            normalizedDirection,
+
+        triggerPriceType:
+            normalizeTpSlTriggerType(),
+
+        reduceOnly:
+            true,
+    };
+}
+
+
+// ============================================================
+// PLACE TAKE PROFIT ORDER
+// ============================================================
+
+async function placeTakeProfitOrder(
+    symbol,
+    direction,
+    triggerPrice
+) {
+
+    const normalizedSymbol =
+        normalizeSymbol(
+            symbol
+        );
+
+
+    const clientAlgoId =
+        `TVTP_${normalizedSymbol}_${Date.now()}`
+            .slice(
+                0,
+                36
+            );
+
+
+    const order =
+        buildTpSlOrder(
+            normalizedSymbol,
+            direction,
+            "TAKE_PROFIT",
+            triggerPrice,
+            clientAlgoId
+        );
+
+
+    console.log("");
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "PLACE WEEX TAKE PROFIT"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "Symbol:",
+        normalizedSymbol
+    );
+
+    console.log(
+        "Position side:",
+        direction
+    );
+
+    console.log(
+        "Trigger price:",
+        triggerPrice
+    );
+
+    console.log(
+        "Trigger type:",
+        order.triggerPriceType
+    );
+
+    console.log(
+        "Execution:",
+        "MARKET"
+    );
+
+    console.log(
+        "Quantity:",
+        "FULL POSITION"
+    );
+
+
+    const response =
+        await weexRequest(
+            "POST",
+            "/capi/v3/placeTpSlOrder",
+            order
+        );
+
+
+    console.log("");
+
+    console.log(
+        "TAKE PROFIT RESPONSE:"
+    );
+
+    console.log(
+        JSON.stringify(
+            response,
+            null,
+            2
+        )
+    );
+
+
+    if (
+        !isWeexSuccess(response)
+    ) {
+
+        const businessError =
+            extractWeexBusinessError(
+                response
+            );
+
+
+        throw new Error(
+            `${normalizedSymbol}: WEEX TAKE_PROFIT rejected (${businessError.errorCode}): ${businessError.errorMessage}`
+        );
+    }
+
+
+    return {
+
+        success:
+            true,
+
+        type:
+            "TAKE_PROFIT",
+
+        symbol:
+            normalizedSymbol,
+
+        direction,
+
+        triggerPrice:
+            String(triggerPrice),
+
+        triggerPriceType:
+            order.triggerPriceType,
+
+        clientAlgoId,
+
+        response,
+    };
+}
+
+
+// ============================================================
+// PLACE STOP LOSS ORDER
+// ============================================================
+
+async function placeStopLossOrder(
+    symbol,
+    direction,
+    triggerPrice
+) {
+
+    const normalizedSymbol =
+        normalizeSymbol(
+            symbol
+        );
+
+
+    const clientAlgoId =
+        `TVSL_${normalizedSymbol}_${Date.now()}`
+            .slice(
+                0,
+                36
+            );
+
+
+    const order =
+        buildTpSlOrder(
+            normalizedSymbol,
+            direction,
+            "STOP_LOSS",
+            triggerPrice,
+            clientAlgoId
+        );
+
+
+    console.log("");
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "PLACE WEEX STOP LOSS"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "Symbol:",
+        normalizedSymbol
+    );
+
+    console.log(
+        "Position side:",
+        direction
+    );
+
+    console.log(
+        "Trigger price:",
+        triggerPrice
+    );
+
+    console.log(
+        "Trigger type:",
+        order.triggerPriceType
+    );
+
+    console.log(
+        "Execution:",
+        "MARKET"
+    );
+
+    console.log(
+        "Quantity:",
+        "FULL POSITION"
+    );
+
+
+    const response =
+        await weexRequest(
+            "POST",
+            "/capi/v3/placeTpSlOrder",
+            order
+        );
+
+
+    console.log("");
+
+    console.log(
+        "STOP LOSS RESPONSE:"
+    );
+
+    console.log(
+        JSON.stringify(
+            response,
+            null,
+            2
+        )
+    );
+
+
+    if (
+        !isWeexSuccess(response)
+    ) {
+
+        const businessError =
+            extractWeexBusinessError(
+                response
+            );
+
+
+        throw new Error(
+            `${normalizedSymbol}: WEEX STOP_LOSS rejected (${businessError.errorCode}): ${businessError.errorMessage}`
+        );
+    }
+
+
+    return {
+
+        success:
+            true,
+
+        type:
+            "STOP_LOSS",
+
+        symbol:
+            normalizedSymbol,
+
+        direction,
+
+        triggerPrice:
+            String(triggerPrice),
+
+        triggerPriceType:
+            order.triggerPriceType,
+
+        clientAlgoId,
+
+        response,
+    };
+}
+
+
+// ============================================================
+// PLACE POSITION TP/SL
+// ============================================================
+//
+// This is the main TP/SL function.
+//
+// IMPORTANT:
+//
+// The caller must pass the LIVE CONFIRMED WEEX position.
+//
+// Therefore:
+//
+//     position.avgPrice
+//
+// is the actual WEEX average entry price.
+//
+// We do NOT use:
+//     TradingView price
+//     ticker price
+//     calculated pre-order price
+// ============================================================
+
+async function placePositionTpSl(
+    position
+) {
+
+    if (
+        !TP_SL_ENABLED
+    ) {
+
+        console.log("");
+
+        console.log(
+            "TP/SL: DISABLED"
+        );
+
+
+        return {
+
+            success:
+                true,
+
+            enabled:
+                false,
+
+            reason:
+                "TP_SL_DISABLED",
+        };
+    }
+
+
+    if (
+        !position ||
+        position.direction === "FLAT" ||
+        !position.quantity ||
+        position.quantity <= 0
+    ) {
+
+        return {
+
+            success:
+                true,
+
+            enabled:
+                true,
+
+            reason:
+                "NO_ACTIVE_POSITION",
+        };
+    }
+
+
+    const symbol =
+        normalizeSymbol(
+            position.symbol
+        );
+
+
+    const direction =
+        String(
+            position.direction || ""
+        )
+            .trim()
+            .toUpperCase();
+
+
+    const entryPrice =
+        Number(
+            position.avgPrice
+        );
+
+
+    if (
+        direction !== "LONG" &&
+        direction !== "SHORT"
+    ) {
+
+        throw new Error(
+            `${symbol}: cannot place TP/SL for direction ${direction}`
+        );
+    }
+
+
+    if (
+        !Number.isFinite(entryPrice) ||
+        entryPrice <= 0
+    ) {
+
+        throw new Error(
+            `${symbol}: live position has invalid average entry price ${position.avgPrice}`
+        );
+    }
+
+
+    // --------------------------------------------------------
+    // CALCULATE FROM ACTUAL WEEX ENTRY
+    // --------------------------------------------------------
+
+    const levels =
+        calculateTakeProfitStopLoss(
+            symbol,
+            direction,
+            entryPrice
+        );
+
+
+    console.log("");
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "WEEX TP/SL PROTECTION"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "Symbol:",
+        symbol
+    );
+
+    console.log(
+        "Direction:",
+        direction
+    );
+
+    console.log(
+        "LIVE WEEX AVG ENTRY:",
+        levels.entryPrice
+    );
+
+    console.log(
+        "TP percentage:",
+        levels.takeProfitPercent + "%"
+    );
+
+    console.log(
+        "SL percentage:",
+        levels.stopLossPercent + "%"
+    );
+
+    console.log(
+        "TP PRICE:",
+        levels.takeProfitTriggerPrice
+    );
+
+    console.log(
+        "SL PRICE:",
+        levels.stopLossTriggerPrice
+    );
+
+    console.log(
+        "Trigger type:",
+        levels.triggerPriceType
+    );
+
+
+    // --------------------------------------------------------
+    // PLACE TP
+    // --------------------------------------------------------
+
+    let takeProfitResult;
+
+    let stopLossResult;
+
+
+    try {
+
+        takeProfitResult =
+            await placeTakeProfitOrder(
+                symbol,
+                direction,
+                levels.takeProfitTriggerPrice
+            );
+
+    } catch (error) {
+
+        console.error("");
+
+        console.error(
+            `${symbol}: TAKE PROFIT placement failed.`
+        );
+
+        console.error(
+            error.message
+        );
+
+        throw error;
+    }
+
+
+    // --------------------------------------------------------
+    // PLACE SL
+    // --------------------------------------------------------
+
+    try {
+
+        stopLossResult =
+            await placeStopLossOrder(
+                symbol,
+                direction,
+                levels.stopLossTriggerPrice
+            );
+
+    } catch (error) {
+
+        console.error("");
+
+        console.error(
+            `${symbol}: STOP LOSS placement failed.`
+        );
+
+        console.error(
+            error.message
+        );
+
+
+        // ----------------------------------------------------
+        // IMPORTANT:
+        //
+        // TP may already exist here.
+        //
+        // We DO NOT silently report success.
+        //
+        // The caller can decide whether to close the position
+        // because protection is incomplete.
+        // ----------------------------------------------------
+
+        const protectionError =
+            new Error(
+                `${symbol}: TP was placed but SL failed. POSITION IS NOT FULLY PROTECTED. ${error.message}`
+            );
+
+
+        protectionError.tpPlaced =
+            true;
+
+        protectionError.takeProfit =
+            takeProfitResult;
+
+        protectionError.slPlaced =
+            false;
+
+        protectionError.originalError =
+            error;
+
+
+        throw protectionError;
+    }
+
+
+    console.log("");
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        "TP/SL PROTECTION ACTIVE"
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+    console.log(
+        `${symbol} ${direction}`
+    );
+
+    console.log(
+        "ENTRY:",
+        levels.entryPrice
+    );
+
+    console.log(
+        "TAKE PROFIT:",
+        levels.takeProfitTriggerPrice
+    );
+
+    console.log(
+        "STOP LOSS:",
+        levels.stopLossTriggerPrice
+    );
+
+    console.log(
+        "TRIGGER:",
+        levels.triggerPriceType
+    );
+
+    console.log(
+        "============================================================"
+    );
+
+
+    return {
+
+        success:
+            true,
+
+        enabled:
+            true,
+
+        symbol,
+
+        direction,
+
+        quantity:
+            position.quantity,
+
+        entryPrice:
+            levels.entryPrice,
+
+        takeProfitPercent:
+            levels.takeProfitPercent,
+
+        stopLossPercent:
+            levels.stopLossPercent,
+
+        takeProfitPrice:
+            levels.takeProfitPrice,
+
+        stopLossPrice:
+            levels.stopLossPrice,
+
+        takeProfitTriggerPrice:
+            levels.takeProfitTriggerPrice,
+
+        stopLossTriggerPrice:
+            levels.stopLossTriggerPrice,
+
+        triggerPriceType:
+            levels.triggerPriceType,
+
+        takeProfit:
+            takeProfitResult,
+
+        stopLoss:
+            stopLossResult,
+    };
+}
+
+
+// ============================================================
 // WAIT FOR POSITION
 // ============================================================
 
@@ -4901,6 +4953,20 @@ async function waitForPosition(
     expectedDirection,
     maxAttempts = 20
 ) {
+
+    const normalizedSymbol =
+        normalizeSymbol(
+            symbol
+        );
+
+
+    const normalizedDirection =
+        String(
+            expectedDirection || ""
+        )
+            .trim()
+            .toUpperCase();
+
 
     for (
         let attempt = 1;
@@ -4913,12 +4979,12 @@ async function waitForPosition(
 
         const position =
             await getCurrentPosition(
-                symbol
+                normalizedSymbol
             );
 
 
         if (
-            expectedDirection === "FLAT"
+            normalizedDirection === "FLAT"
         ) {
 
             if (
@@ -4927,7 +4993,7 @@ async function waitForPosition(
             ) {
 
                 console.log(
-                    `${symbol}: confirmed FLAT`
+                    `${normalizedSymbol}: confirmed FLAT`
                 );
 
                 return true;
@@ -4935,11 +5001,11 @@ async function waitForPosition(
 
         } else if (
             position.direction ===
-            expectedDirection
+            normalizedDirection
         ) {
 
             console.log(
-                `${symbol}: confirmed ${expectedDirection}`
+                `${normalizedSymbol}: confirmed ${normalizedDirection}`
             );
 
             return true;
@@ -4947,7 +5013,7 @@ async function waitForPosition(
 
 
         console.log(
-            `${symbol}: waiting for ${expectedDirection} ${attempt}/${maxAttempts}`
+            `${normalizedSymbol}: waiting for ${normalizedDirection} ${attempt}/${maxAttempts}`
         );
     }
 
@@ -5057,6 +5123,26 @@ module.exports = {
     closePosition,
 
     waitForPosition,
+
+
+    // --------------------------------------------------------
+    // TP / SL
+    // --------------------------------------------------------
+
+    calculateTakeProfitStopLoss,
+
+    placeTakeProfitOrder,
+
+    placeStopLossOrder,
+
+    placePositionTpSl,
+
+
+    // --------------------------------------------------------
+    // PRICE
+    // --------------------------------------------------------
+
+    formatPrice,
 
 
     // --------------------------------------------------------

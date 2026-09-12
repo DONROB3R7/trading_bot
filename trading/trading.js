@@ -1489,13 +1489,6 @@ async function processSignal(
             // ------------------------------------------------
             // TP / SL PROTECTION
             // ------------------------------------------------
-            //
-            // ONLY NOW.
-            //
-            // Position is confirmed live on WEEX.
-            // protectConfirmedPosition() reads the actual
-            // WEEX average entry price.
-            // ------------------------------------------------
 
             const protection =
                 await protectConfirmedPosition(
@@ -1654,12 +1647,6 @@ async function processSignal(
         // ====================================================
         // TP / SL PROTECTION
         // ====================================================
-        //
-        // Position now exists on WEEX.
-        //
-        // protectConfirmedPosition() retrieves the LIVE
-        // position and uses its actual avgPrice.
-        // ====================================================
 
         const protection =
             await protectConfirmedPosition(
@@ -1770,6 +1757,51 @@ async function processAutomaticOrderFlow(
         options.tradeAllowed !== false;
 
 
+    // ========================================================
+    // SELECT TREND DEPTH
+    // ========================================================
+    //
+    // Frontend will eventually send:
+    //
+    //     options.trendDepth = 60
+    //
+    // For now, if nothing is supplied, keep the old
+    // 200-level behavior.
+    //
+    // This makes the change backwards compatible.
+    // ========================================================
+
+    let trendDepth =
+        Number(
+            options.trendDepth
+        );
+
+
+    if (
+        !Number.isFinite(trendDepth) ||
+        trendDepth <= 0 ||
+        !Number.isInteger(trendDepth)
+    ) {
+
+        trendDepth = 200;
+
+    }
+
+
+    // Safety cap.
+    //
+    // The WEEX snapshot currently contains 200 levels.
+    // Therefore trend depth cannot be larger than 200.
+
+    if (
+        trendDepth > 200
+    ) {
+
+        trendDepth = 200;
+
+    }
+
+
     // --------------------------------------------------------
     // CREATE / UPDATE HISTORY
     // --------------------------------------------------------
@@ -1777,7 +1809,8 @@ async function processAutomaticOrderFlow(
     const decision =
         processOrderFlowHistory(
             symbol,
-            orderBookResult
+            orderBookResult,
+            trendDepth
         );
 
 
@@ -1788,6 +1821,31 @@ async function processAutomaticOrderFlow(
 
     const currentSnapshots =
         decision.history?.snapshots || 0;
+
+
+    // --------------------------------------------------------
+    // DYNAMIC TREND RESULT
+    // --------------------------------------------------------
+    //
+    // New orderFlowHistory.js provides:
+    //
+    //     decision.trend
+    //
+    // Compatibility is still kept through:
+    //
+    //     decision.trend200
+    //
+    // Use the new dynamic field first.
+    // --------------------------------------------------------
+
+    const trend =
+        decision.trend ||
+        decision.trend200;
+
+
+    const currentTrend =
+        decision.current?.trend ||
+        decision.current?.trend200;
 
 
     // --------------------------------------------------------
@@ -1809,8 +1867,12 @@ async function processAutomaticOrderFlow(
     );
 
     console.log(
-        "CURRENT 200 TREND:",
-        decision.current.trend200
+        `TREND DEPTH: ${trendDepth} LEVELS`
+    );
+
+    console.log(
+        "CURRENT TREND:",
+        currentTrend
     );
 
     console.log(
@@ -1820,19 +1882,19 @@ async function processAutomaticOrderFlow(
 
     console.log(
         "TREND HISTORY:",
-        `${decision.trend200.longCount} LONG / ` +
-        `${decision.trend200.shortCount} SHORT / ` +
-        `${decision.trend200.neutralCount} NEUTRAL`
+        `${trend.longCount} LONG / ` +
+        `${trend.shortCount} SHORT / ` +
+        `${trend.neutralCount} NEUTRAL`
     );
 
     console.log(
         "TREND LONG:",
-        `${decision.trend200.longPercent}%`
+        `${trend.longPercent}%`
     );
 
     console.log(
         "TREND SHORT:",
-        `${decision.trend200.shortPercent}%`
+        `${trend.shortPercent}%`
     );
 
     console.log(
@@ -2086,6 +2148,11 @@ async function processAutomaticOrderFlow(
 
     console.log(
         `EXECUTING FINAL ORDER-FLOW DECISION: ${symbol}`
+    );
+
+    console.log(
+        "TREND DEPTH:",
+        `${trendDepth} LEVELS`
     );
 
     console.log(

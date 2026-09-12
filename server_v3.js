@@ -63,7 +63,8 @@ const {
 
 const {
     getHistory,
-    getHistoryStatus
+    getHistoryStatus,
+    normalizeTrendDepth
 } = require("./filters/orderFlowHistory");
 
 const {
@@ -309,6 +310,15 @@ function getDashboardOrderFlowHistory() {
 
                             history:
                                 completed.history ??
+                                null,
+
+                            trend:
+                                completed.trend ??
+                                null,
+
+                            trendDepth:
+                                completed.history?.trendDepth ??
+                                completed.trendDepth ??
                                 null,
 
                             trend200:
@@ -1458,6 +1468,256 @@ app.post(
 // AUTOMATIC TRADER
 // ============================================================
 
+
+// ============================================================
+// START / CONFIGURE AUTOMATIC TRADER
+//
+// Frontend sends:
+//
+//     {
+//         trendDepth: 60
+//     }
+//
+// This changes the TREND depth for the automatic-trader
+// session.
+//
+// IMPORTANT:
+//
+// This does NOT create a second scanner.
+//
+// startAutomaticTrader() clears the existing timer first.
+//
+// Example:
+//
+//     60
+//
+// means:
+//
+//     TREND = first 60 levels
+//
+// Trigger confirmation remains:
+//
+//     15 + 20 + 30 + 60
+//
+//     3 OF 4
+// ============================================================
+
+app.post(
+    "/automatic-trader/start",
+    (
+        req,
+        res
+    ) => {
+
+        try {
+
+            if (
+                !AUTO_TRADING_ENABLED
+            ) {
+
+                return res.status(
+                    400
+                ).json({
+
+                    success:
+                        false,
+
+                    error:
+                        "Automatic trader is disabled in config.js"
+                });
+            }
+
+
+            if (
+                !TRADING_ENABLED
+            ) {
+
+                return res.status(
+                    400
+                ).json({
+
+                    success:
+                        false,
+
+                    error:
+                        "Trading is disabled in config.js"
+                });
+            }
+
+
+            const rawTrendDepth =
+                req.body?.trendDepth;
+
+
+            // ------------------------------------------------
+            // VALIDATE TREND DEPTH
+            // ------------------------------------------------
+
+            let trendDepth;
+
+
+            try {
+
+                trendDepth =
+                    normalizeTrendDepth(
+                        rawTrendDepth
+                    );
+
+            } catch (error) {
+
+                return res.status(
+                    400
+                ).json({
+
+                    success:
+                        false,
+
+                    error:
+                        error.message,
+
+                    trendDepth:
+                        rawTrendDepth
+                });
+            }
+
+
+            console.log("");
+
+            console.log(
+                "============================================================"
+            );
+
+            console.log(
+                "START BOT REQUEST"
+            );
+
+            console.log(
+                "============================================================"
+            );
+
+            console.log(
+                "TREND DEPTH:",
+                trendDepth,
+                "LEVELS"
+            );
+
+            console.log(
+                "TRIGGER DEPTHS:",
+                CONFIRMATION_DEPTHS.join(" + ")
+            );
+
+            console.log(
+                "TRIGGER RULE:",
+                "3 OF 4"
+            );
+
+
+            // ------------------------------------------------
+            // START / RESTART AUTOMATIC TRADER
+            // ------------------------------------------------
+
+            const result =
+                startAutomaticTrader(
+                    trendDepth
+                );
+
+
+            if (
+                !result?.success
+            ) {
+
+                return res.status(
+                    400
+                ).json({
+
+                    success:
+                        false,
+
+                    error:
+                        result?.error ||
+                        "Unable to start automatic trader"
+                });
+            }
+
+
+            console.log(
+                "AUTOMATIC TRADER CONFIGURED"
+            );
+
+            console.log(
+                "TREND DEPTH:",
+                result.trendDepth,
+                "LEVELS"
+            );
+
+            console.log(
+                "NEXT RUN:",
+                result.nextRun
+            );
+
+            console.log(
+                "============================================================"
+            );
+
+
+            return res.json({
+
+                success:
+                    true,
+
+                started:
+                    true,
+
+                trendDepth:
+                    result.trendDepth,
+
+                nextRun:
+                    result.nextRun,
+
+                confirmationDepths:
+                    [...CONFIRMATION_DEPTHS],
+
+                confirmationRequired:
+                    3,
+
+                confirmationRule:
+                    "3_OF_4",
+
+                message:
+                    `Automatic trader started with ${result.trendDepth}-level trend depth.`
+            });
+
+        } catch (error) {
+
+            console.error(
+                "AUTOMATIC TRADER START ERROR:",
+                error.message
+            );
+
+            return res.status(
+                500
+            ).json({
+
+                success:
+                    false,
+
+                error:
+                    error.message
+            });
+        }
+    }
+);
+
+
+// ============================================================
+// FORCE / RUN ONE AUTOMATIC SCAN
+//
+// This does NOT change the selected trend depth.
+//
+// It simply runs one scan immediately using the currently
+// selected automatic-trader trend depth.
+// ============================================================
+
 app.post(
     "/automatic-trader/run",
     (
@@ -1534,6 +1794,9 @@ app.post(
 
             accepted:
                 true,
+
+            trendDepth:
+                status.trendDepth,
 
             message:
                 "Automatic order-flow scan started in background."
@@ -1761,12 +2024,37 @@ app.get(
 
                         current: {
 
+                            trend:
+                                "NEUTRAL",
+
                             trend200:
                                 "NEUTRAL",
 
                             trigger:
                                 "NEUTRAL"
                         },
+
+                        trend:
+                            {
+
+                                longCount:
+                                    0,
+
+                                shortCount:
+                                    0,
+
+                                neutralCount:
+                                    0,
+
+                                longPercent:
+                                    0,
+
+                                shortPercent:
+                                    0,
+
+                                neutralPercent:
+                                    0
+                            },
 
                         trend200: {
 
@@ -2696,6 +2984,14 @@ app.listen(
 
             // ------------------------------------------------
             // START AUTOMATIC TRADER
+            //
+            // No trend depth supplied here.
+            //
+            // automaticTrader.js therefore uses its safe
+            // compatibility fallback of 200.
+            //
+            // The dashboard START BOT button can later change
+            // this by calling /automatic-trader/start.
             // ------------------------------------------------
 
             startAutomaticTrader();
@@ -2717,6 +3013,12 @@ app.listen(
             console.log(
                 "Session:",
                 session.sessionNumber
+            );
+
+            console.log(
+                "Trend depth:",
+                session.trendDepth,
+                "LEVELS"
             );
 
             console.log(
@@ -2805,6 +3107,22 @@ app.listen(
 
             console.log(
                 "GET /automatic-trader/status"
+            );
+
+            console.log(
+                "START BOT / TREND DEPTH:"
+            );
+
+            console.log(
+                "POST /automatic-trader/start"
+            );
+
+            console.log(
+                "Example body:"
+            );
+
+            console.log(
+                '{ "trendDepth": 60 }'
             );
 
             console.log(

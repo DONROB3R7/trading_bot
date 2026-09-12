@@ -174,7 +174,7 @@ function setConnection(
     if(connected){
 
         element.textContent =
-            "● ONLINE";
+            "ONLINE";
 
         element.className =
             "connection connected";
@@ -2829,3 +2829,158 @@ setInterval(
     },
     AUTOMATIC_STATUS_REFRESH_MS
 );
+
+
+
+/* ============================================================
+   START BOT
+============================================================ */
+
+async function startBot(){
+
+    const input =
+        document.getElementById(
+            "trendDepthInput"
+        );
+
+
+    const button =
+        document.getElementById(
+            "startBotButton"
+        );
+
+
+    if(!input){
+
+        console.error(
+            "TREND DEPTH INPUT NOT FOUND"
+        );
+
+        return;
+
+    }
+
+
+    const trendDepth =
+        Number(
+            input.value
+        );
+
+
+    /* --------------------------------------------------------
+       VALIDATE
+    -------------------------------------------------------- */
+
+    if(
+        !Number.isFinite(trendDepth) ||
+        trendDepth <= 0 ||
+        !Number.isInteger(trendDepth)
+    ){
+
+        alert(
+            "Please enter a valid trend depth number."
+        );
+
+        input.focus();
+
+        return;
+
+    }
+
+
+    /* --------------------------------------------------------
+       BUTTON
+    -------------------------------------------------------- */
+
+    if(button){
+
+        button.disabled =
+            true;
+
+        button.textContent =
+            "⏳ STARTING...";
+
+    }
+
+
+    try{
+
+        const response =
+            await fetch(
+                "/automatic-trader/start",
+                {
+
+                    method:"POST",
+
+                    headers:{
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+                            trendDepth
+                        })
+
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if(!response.ok){
+
+            throw new Error(
+                data.error ||
+                `HTTP ${response.status}`
+            );
+
+        }
+
+
+        /* ----------------------------------------------------
+           SUCCESS
+        ---------------------------------------------------- */
+
+        setText(
+            "autoTraderMessage",
+            data.message ||
+            `Bot started with ${trendDepth} trend depth.`
+        );
+
+
+        await loadAutomaticTraderStatus();
+
+
+    }catch(error){
+
+        console.error(
+            "START BOT ERROR:",
+            error
+        );
+
+
+        setText(
+            "autoTraderMessage",
+            "ERROR: " +
+            error.message
+        );
+
+
+    }finally{
+
+        if(button){
+
+            button.disabled =
+                false;
+
+            button.textContent =
+                "▶ START BOT";
+
+        }
+
+    }
+
+}

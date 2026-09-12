@@ -15,7 +15,8 @@ const {
 } = require("../trading/trading");
 
 const {
-    HISTORY_INTERVAL_MS
+    HISTORY_INTERVAL_MS,
+    normalizeTrendDepth
 } = require("../filters/orderFlowHistory");
 
 const {
@@ -32,6 +33,32 @@ let automaticTraderTimer = null;
 
 let automaticTraderLastRun = null;
 let automaticTraderNextRun = null;
+
+
+// ============================================================
+// SELECTED TREND DEPTH
+//
+// This controls the TREND calculation used by the automatic
+// order-flow history system.
+//
+// IMPORTANT:
+//
+// Frontend can later start the bot with:
+//
+//     startAutomaticTrader(60)
+//
+// which means:
+//
+//     TREND = 60 LEVELS
+//
+// If no value is supplied, we keep 200 as the backend
+// compatibility fallback.
+//
+// The frontend input itself remains EMPTY until the user enters
+// a value.
+// ============================================================
+
+let automaticTraderTrendDepth = 200;
 
 
 // ============================================================
@@ -73,7 +100,9 @@ const lastProcessedSymbol = new Map();
 // Persistence to disk will be added separately.
 //
 // Only completed FINAL decisions are recorded.
-// History collection / previews are NOT recorded.
+//
+// TREND DEPTH is recorded with the session so later we can
+// compare sessions using different trend depths.
 // ============================================================
 
 const sessionStartedAt = new Date();
@@ -84,6 +113,9 @@ const decisionSession = {
 
     startedAt:
         sessionStartedAt.toISOString(),
+
+    trendDepth:
+        automaticTraderTrendDepth,
 
     long: 0,
 
@@ -363,6 +395,28 @@ function recordFinalDecision(
 
 
     // --------------------------------------------------------
+    // GET ACTUAL TREND DEPTH FROM RESULT
+    //
+    // The history engine records the depth used for this
+    // completed decision.
+    //
+    // Fallback to the current automatic trader depth.
+    // --------------------------------------------------------
+
+    const resultTrendDepth =
+        Number(
+            result.decision?.history?.trendDepth
+        );
+
+
+    const eventTrendDepth =
+        Number.isInteger(resultTrendDepth) &&
+        resultTrendDepth > 0
+            ? resultTrendDepth
+            : automaticTraderTrendDepth;
+
+
+    // --------------------------------------------------------
     // CREATE SESSION EVENT
     // --------------------------------------------------------
 
@@ -374,8 +428,10 @@ function recordFinalDecision(
         symbol:
             normalizedSymbol,
 
-        decision
+        decision,
 
+        trendDepth:
+            eventTrendDepth
     };
 
 
@@ -426,6 +482,12 @@ function recordFinalDecision(
     console.log(
         "SESSION:",
         decisionSession.sessionNumber
+    );
+
+    console.log(
+        "TREND DEPTH:",
+        eventTrendDepth,
+        "LEVELS"
     );
 
     console.log(
@@ -488,6 +550,9 @@ function getFinalDecisionSession() {
         startedAt:
             decisionSession.startedAt,
 
+        trendDepth:
+            decisionSession.trendDepth,
+
         runtime:
             getBotRuntime(),
 
@@ -540,10 +605,10 @@ function symbolIsReady(symbol) {
 // AUTOMATIC TRADER RUN
 //
 // Scanner:
-//     Every 1 minute
+//     Every configured history interval
 //
 // History:
-//     One fresh snapshot every minute
+//     One fresh snapshot every interval
 //
 // FINAL DECISION:
 //     ONLY when history cycle is complete
@@ -589,6 +654,19 @@ async function runAutomaticTrader() {
         new Date().toISOString();
 
 
+    // --------------------------------------------------------
+    // LOCK THE TREND DEPTH FOR THIS SCAN
+    //
+    // If the frontend changes the setting while a scan is
+    // already running, this scan keeps one consistent depth.
+    //
+    // The next scan will use the new depth.
+    // --------------------------------------------------------
+
+    const trendDepth =
+        automaticTraderTrendDepth;
+
+
     let tradesProcessed = 0;
     let symbolsProcessed = 0;
 
@@ -616,6 +694,12 @@ async function runAutomaticTrader() {
         console.log(
             "MANAGED SYMBOLS:",
             symbols.length
+        );
+
+        console.log(
+            "TREND DEPTH:",
+            trendDepth,
+            "LEVELS"
         );
 
         console.log(
@@ -719,9 +803,10 @@ async function runAutomaticTrader() {
                 // processAutomaticOrderFlow() is responsible for:
                 //
                 // 1. Adding snapshot
-                // 2. Checking cycle completion
-                // 3. Making final decision only at N/N
-                // 4. Executing only when allowed
+                // 2. Calculating selected TREND depth
+                // 3. Checking cycle completion
+                // 4. Making final decision only at N/N
+                // 5. Executing only when allowed
                 // ------------------------------------------------
 
                 const result =
@@ -729,7 +814,9 @@ async function runAutomaticTrader() {
                         symbol,
                         orderBookResult,
                         {
-                            tradeAllowed
+                            tradeAllowed,
+
+                            trendDepth
                         }
                     );
 
@@ -827,6 +914,10 @@ async function runAutomaticTrader() {
                 );
 
                 console.log(
+                    `TREND DEPTH: ${trendDepth} LEVELS`
+                );
+
+                console.log(
                     `FINAL DECISION: ${result.decision?.decision || result.decision}`
                 );
 
@@ -901,6 +992,12 @@ async function runAutomaticTrader() {
         );
 
         console.log(
+            "TREND DEPTH:",
+            trendDepth,
+            "LEVELS"
+        );
+
+        console.log(
             "SYMBOLS PROCESSED:",
             symbolsProcessed
         );
@@ -914,6 +1011,8 @@ async function runAutomaticTrader() {
         return {
 
             success: true,
+
+            trendDepth,
 
             symbolsProcessed,
 
@@ -940,17 +1039,77 @@ async function runAutomaticTrader() {
 // ============================================================
 // START AUTOMATIC TRADER
 //
-// Scanner:
-//     Every 1 minute
+// Optional:
 //
-// History:
-//     Continues every minute
+//     startAutomaticTrader(60)
 //
-// Trade delay:
-//     1 hour per symbol
+// means:
+//
+//     TREND = 60 LEVELS
+//
+// If omitted:
+//
+//     TREND = 200 LEVELS
+//
+// IMPORTANT:
+// This clears the previous interval first.
+//
+// Therefore calling START BOT does NOT create duplicate
+// automatic-trader loops.
 // ============================================================
 
-function startAutomaticTrader() {
+function startAutomaticTrader(
+    requestedTrendDepth
+) {
+
+    // --------------------------------------------------------
+    // VALIDATE / NORMALIZE TREND DEPTH
+    // --------------------------------------------------------
+
+    let selectedTrendDepth;
+
+
+    try {
+
+        selectedTrendDepth =
+            normalizeTrendDepth(
+                requestedTrendDepth
+            );
+
+    } catch (error) {
+
+        console.error(
+            "INVALID AUTOMATIC TRADER TREND DEPTH:",
+            error.message
+        );
+
+        return {
+
+            success: false,
+
+            error:
+                error.message
+        };
+    }
+
+
+    // --------------------------------------------------------
+    // SAVE SELECTED DEPTH
+    // --------------------------------------------------------
+
+    automaticTraderTrendDepth =
+        selectedTrendDepth;
+
+
+    decisionSession.trendDepth =
+        selectedTrendDepth;
+
+
+    // --------------------------------------------------------
+    // CLEAR EXISTING TIMER
+    //
+    // Prevents duplicate scanners.
+    // --------------------------------------------------------
 
     if (automaticTraderTimer) {
 
@@ -959,6 +1118,10 @@ function startAutomaticTrader() {
         );
     }
 
+
+    // --------------------------------------------------------
+    // CREATE NEW TIMER
+    // --------------------------------------------------------
 
     automaticTraderTimer =
         setInterval(
@@ -988,8 +1151,18 @@ function startAutomaticTrader() {
         ).toISOString();
 
 
+    // --------------------------------------------------------
+    // LOG
+    // --------------------------------------------------------
+
     console.log(
         "AUTOMATIC TRADER STARTED"
+    );
+
+    console.log(
+        "TREND DEPTH:",
+        automaticTraderTrendDepth,
+        "LEVELS"
     );
 
     console.log(
@@ -1017,6 +1190,18 @@ function startAutomaticTrader() {
         "SESSION START:",
         decisionSession.startedAt
     );
+
+
+    return {
+
+        success: true,
+
+        trendDepth:
+            automaticTraderTrendDepth,
+
+        nextRun:
+            automaticTraderNextRun
+    };
 }
 
 
@@ -1062,6 +1247,9 @@ function getAutomaticTraderStatus() {
 
         running:
             automaticTraderRunning,
+
+        trendDepth:
+            automaticTraderTrendDepth,
 
         lastRun:
             automaticTraderLastRun,

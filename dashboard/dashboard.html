@@ -46,7 +46,7 @@
     <span
         id="connectionStatus"
         class="connection disconnected">
-        ● OFFLINE
+         OFFLINE
     </span>
 
     <button
@@ -170,33 +170,61 @@
     </div>
 
 
-    <div class="auto-trader-controls">
+            <div class="auto-trader-controls">
 
-        <select id="autoCoin">
+                <!-- TREND DEPTH INPUT -->
+                <div class="trend-depth-control">
 
-            <option value="">
-                Loading coins...
-            </option>
+                    <label for="trendDepthInput">
+                    Trend Depth
+                    </label>
 
-        </select>
+                    <input
+                    type="number"
+                    id="trendDepthInput"
+                    min="1"
+                    step="1"
+                    placeholder="Enter depth"
+                    autocomplete="off"
+                    >
+
+                </div>
 
 
-        <button
-            id="autoRunButton"
-            class="button primary"
-            onclick="runAutomaticTrader()">
-            ▶ Run Scan Now
-        </button>
+                <!-- START BOT -->
+                <button
+                    id="startBotButton"
+                    class="button primary"
+                    onclick="startBot()"
+                >
+                    ▶ START BOT
+                </button>
 
 
-        <button
-            id="forceAutoCheckButton"
-            class="button primary"
-            onclick="forceAutomaticCheck()">
-            🔄 Force Hourly Check
-        </button>
+                <!-- EXISTING CONTROLS -->
+                <select id="autoCoin">
+                    <option value="">Loading coins...</option>
+                </select>
 
-    </div>
+
+                <button
+                    id="autoRunButton"
+                    class="button primary"
+                    onclick="runAutomaticTrader()"
+                >
+                    ▶ Run Scan Now
+                </button>
+
+
+                <button
+                    id="forceAutoCheckButton"
+                    class="button primary"
+                    onclick="forceAutomaticCheck()"
+                >
+                    🔄 Force Hourly Check
+                </button>
+
+            </div>
 
 </div>
 

@@ -29,7 +29,8 @@ const {
     normalizeSymbol,
     loadAllContracts,
     getCurrentPosition,
-    getFuturesBalance
+    getFuturesBalance,
+    getKlines
 } = require("./weex/weex");
 
 const {
@@ -87,6 +88,126 @@ app.use(
         )
     )
 );
+
+app.use(
+    "/chart",
+    express.static(
+        path.join(__dirname, "chart")
+    )
+);
+
+
+// ============================================================
+// CHART KLINES PROXY
+// ============================================================
+//
+// READ-ONLY MARKET DATA.
+//
+// Browser:
+// chart.js
+//     ↓
+// /chart/klines
+//     ↓
+// getKlines()
+//     ↓
+// WEEX public market API
+//
+// This does NOT affect:
+// - Trading
+// - Order book
+// - Automatic trader
+// - Positions
+// - TP/SL
+// ============================================================
+
+app.get(
+    "/chart/klines",
+    async (
+        req,
+        res
+    ) => {
+
+        try {
+
+            const symbol =
+                normalizeSymbol(
+                    req.query?.symbol
+                );
+
+            const interval =
+                String(
+                    req.query?.interval ||
+                    "1m"
+                );
+
+            const limit =
+                Number(
+                    req.query?.limit ||
+                    300
+                );
+
+
+            if (!symbol) {
+
+                return res.status(
+                    400
+                ).json({
+
+                    success:
+                        false,
+
+                    error:
+                        "symbol is required"
+                });
+            }
+
+
+            const data =
+                await getKlines(
+                    symbol,
+                    interval,
+                    limit
+                );
+
+
+            return res.json(
+                data
+            );
+
+        } catch (error) {
+
+            console.error(
+                "CHART KLINES ERROR:",
+                error.message
+            );
+
+
+            if (
+                error.data
+            ) {
+
+                console.error(
+                    error.data
+                );
+            }
+
+
+            return res.status(
+                error.status || 500
+            ).json({
+
+                success:
+                    false,
+
+                error:
+                    error.message ||
+                    "Failed to load WEEX klines"
+            });
+        }
+    }
+);
+
+
 
 
 // ============================================================

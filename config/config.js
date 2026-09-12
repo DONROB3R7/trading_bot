@@ -252,7 +252,7 @@ const AUTO_TRADING_INTERVAL_MS =
 //
 
 const AUTO_TRADING_HISTORY_MINUTES =
-    10;
+    20;
 
 
 // ============================================================

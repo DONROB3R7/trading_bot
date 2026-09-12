@@ -1088,6 +1088,133 @@ async function getPrice(
 
 
 // ============================================================
+// GET KLINES
+// ============================================================
+//
+// READ-ONLY MARKET DATA.
+//
+// Used by the separate WEEX Market Lab chart.
+//
+// This does NOT affect:
+// - Trading
+// - Order book filtering
+// - Automatic trader
+// - Positions
+// - TP/SL
+//
+// WEEX public endpoint:
+// GET /capi/v3/market/klines
+//
+// Supported intervals:
+// 1m, 5m, 15m, 30m, 1h, 4h, 12h, 1d, 1w
+// ============================================================
+
+async function getKlines(
+    symbol,
+    interval = "1m",
+    limit = 300
+) {
+
+    const normalizedSymbol =
+        normalizeSymbol(
+            symbol
+        );
+
+
+    const allowedIntervals = [
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "4h",
+        "12h",
+        "1d",
+        "1w",
+    ];
+
+
+    const normalizedInterval =
+        String(
+            interval || "1m"
+        )
+            .trim()
+            .toLowerCase();
+
+
+    if (
+        !allowedIntervals.includes(
+            normalizedInterval
+        )
+    ) {
+
+        throw new Error(
+            `Invalid WEEX kline interval: ${normalizedInterval}`
+        );
+    }
+
+
+    let requestedLimit =
+        Number(limit);
+
+
+    if (
+        !Number.isFinite(
+            requestedLimit
+        )
+    ) {
+
+        requestedLimit =
+            300;
+    }
+
+
+    requestedLimit =
+        Math.floor(
+            requestedLimit
+        );
+
+
+    requestedLimit =
+        Math.max(
+            1,
+            Math.min(
+                1000,
+                requestedLimit
+            )
+        );
+
+
+    if (
+        !normalizedSymbol
+    ) {
+
+        throw new Error(
+            "WEEX kline symbol is required."
+        );
+    }
+
+
+    return weexRequest(
+        "GET",
+        "/capi/v3/market/klines",
+        {
+            symbol:
+                normalizedSymbol,
+
+            interval:
+                normalizedInterval,
+
+            limit:
+                requestedLimit,
+        }
+    );
+}
+
+
+
+
+// ============================================================
 // GET ORDER BOOK
 // ============================================================
 
@@ -5152,4 +5279,10 @@ module.exports = {
     formatQuantity,
 
     extractStepSizeFromError,
+
+    // --------------------------------------------------------
+    // KLINES
+    // --------------------------------------------------------
+
+    getKlines,
 };

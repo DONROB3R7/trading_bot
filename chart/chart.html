@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>WEEX Market Lab</title>
+
+
+    <link
+        rel="stylesheet"
+        href="chart.css"
+    >
+
+
+    <script
+        src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"
+    ></script>
+
+</head>
+
+
+<body>
+
+
+<div class="lab">
+
+
+    <!-- ================================================== -->
+    <!-- HEADER -->
+    <!-- ================================================== -->
+
+    <header class="lab-header">
+
+        <div>
+
+            <div class="eyebrow">
+                WEEX MARKET LAB
+            </div>
+
+            <h1>
+                Market Microscope
+            </h1>
+
+            <p>
+                Visual market analysis — no trading logic
+            </p>
+
+        </div>
+
+
+        <div class="connection-status">
+
+            <span class="status-dot"></span>
+
+            VISUAL MODE
+
+        </div>
+
+    </header>
+
+
+
+    <!-- ================================================== -->
+    <!-- CONTROLS -->
+    <!-- ================================================== -->
+
+    <section class="control-panel">
+
+
+        <div class="control-group">
+
+            <label for="symbol">
+                SYMBOL
+            </label>
+
+            <select id="symbol">
+
+                <option>
+                    POLUSDT
+                </option>
+
+                <option>
+                    BTCUSDT
+                </option>
+
+                <option>
+                    ETHUSDT
+                </option>
+
+                <option>
+                    ALGOUSDT
+                </option>
+
+                <option>
+                    DASHUSDT
+                </option>
+
+                <option>
+                    CAKEUSDT
+                </option>
+
+            </select>
+
+        </div>
+
+
+
+        <div class="control-group">
+
+            <label for="timeframe">
+                TIMEFRAME
+            </label>
+
+            <select id="timeframe">
+
+                <option>
+                    1m
+                </option>
+
+                <option>
+                    5m
+                </option>
+
+                <option>
+                    15m
+                </option>
+
+                <option>
+                    30m
+                </option>
+
+                <option>
+                    1h
+                </option>
+
+            </select>
+
+        </div>
+
+
+
+        <div class="control-group">
+
+            <label>
+                MARKET
+            </label>
+
+            <div
+                id="marketStatus"
+                class="market-status"
+            >
+                READY
+            </div>
+
+        </div>
+
+
+    </section>
+
+
+
+    <!-- ================================================== -->
+    <!-- PRICE -->
+    <!-- ================================================== -->
+
+    <section class="chart-panel">
+
+
+        <div class="panel-header">
+
+
+            <div>
+
+                <span class="panel-label">
+                    PRICE
+                </span>
+
+                <h2>
+                    Candlestick Chart
+                </h2>
+
+            </div>
+
+
+            <div
+                id="currentPrice"
+                class="panel-value"
+            >
+                —
+            </div>
+
+
+        </div>
+
+
+        <div
+            id="priceChart"
+            class="chart-area"
+        ></div>
+
+
+    </section>
+
+
+
+    <!-- ================================================== -->
+    <!-- DELTA -->
+    <!-- ================================================== -->
+
+    <section class="chart-panel delta-panel">
+
+
+        <div class="panel-header">
+
+
+            <div>
+
+                <span class="panel-label">
+                    ORDER FLOW
+                </span>
+
+                <h2>
+                    Delta
+                </h2>
+
+            </div>
+
+
+            <div
+                id="deltaValue"
+                class="delta-value"
+            >
+                —
+            </div>
+
+
+        </div>
+
+
+        <div
+            id="deltaChart"
+            class="delta-area"
+        ></div>
+
+
+    </section>
+
+
+
+    <!-- ================================================== -->
+    <!-- CUMULATIVE DELTA -->
+    <!-- ================================================== -->
+
+    <section class="chart-panel cumulative-panel">
+
+
+        <div class="panel-header">
+
+
+            <div>
+
+                <span class="panel-label">
+                    ORDER FLOW
+                </span>
+
+                <h2>
+                    Cumulative Delta
+                </h2>
+
+            </div>
+
+
+            <div
+                id="cumulativeDeltaValue"
+                class="cumulative-value"
+            >
+                —
+            </div>
+
+
+        </div>
+
+
+        <div
+            id="cumulativeDeltaChart"
+            class="cumulative-area"
+        ></div>
+
+
+    </section>
+
+
+
+    <!-- ================================================== -->
+    <!-- FOOTER -->
+    <!-- ================================================== -->
+
+    <footer class="lab-footer">
+
+        <span>
+            WEEX MARKET LAB
+        </span>
+
+        <span>
+            VISUAL ANALYSIS ONLY
+        </span>
+
+    </footer>
+
+
+</div>
+
+
+
+<script
+    src="chart.js"
+></script>
+
+
+</body>
+
+</html>

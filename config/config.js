@@ -46,10 +46,10 @@ const TP_SL_ENABLED =
     true;
 
 const TAKE_PROFIT_PERCENT =
-    4.0;
+    3.0;
 
 const STOP_LOSS_PERCENT =
-    4.0;
+    2.0;
 
 const TP_SL_TRIGGER_TYPE =
     "MARK_PRICE";
@@ -252,7 +252,7 @@ const AUTO_TRADING_INTERVAL_MS =
 //
 
 const AUTO_TRADING_HISTORY_MINUTES =
-    20;
+    10;
 
 
 // ============================================================
@@ -264,7 +264,7 @@ const AUTO_TRADING_HISTORY_MINUTES =
 //
 
 const AUTO_TRADING_MAX_TRADES_PER_CYCLE =
-    3;
+    5;
 
 
 // ============================================================

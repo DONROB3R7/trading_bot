@@ -1,328 +1,1042 @@
 <!DOCTYPE html>
+
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
 
-    <title>WEEX Market Lab</title>
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
+<title>WEEX Price Signal Lab</title>
 
-    <link
-        rel="stylesheet"
-        href="chart.css"
-    >
+<link
+    rel="stylesheet"
+    href="/chart/chart.css"
+>
 
-
-    <script
-        src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"
-    ></script>
 
 </head>
 
-
 <body>
 
+<div class="app">
 
-<div class="lab">
+
+<!-- =========================================================
+     HEADER
+========================================================== -->
+
+<header class="header">
+
+    <div>
+        <div class="eyebrow">
+            WEEX PRICE SIGNAL LAB
+        </div>
+
+        <h1>
+            Price Movement System
+        </h1>
+
+        <p class="subtitle">
+            1-minute price-only trend and entry analysis
+        </p>
+    </div>
+
+    <div class="connection-status">
+
+        <span
+            id="connectionDot"
+            class="status-dot offline">
+        </span>
+
+        <span id="connectionText">
+            OFFLINE
+        </span>
+
+    </div>
+
+</header>
 
 
-    <!-- ================================================== -->
-    <!-- HEADER -->
-    <!-- ================================================== -->
+<!-- =========================================================
+     CONTROLS
+========================================================== -->
 
-    <header class="lab-header">
+<section class="panel controls-panel">
+
+    <div class="control-group">
+
+        <label for="symbol">
+            SYMBOL
+        </label>
+
+        <input
+            id="symbol"
+            type="text"
+            value="POLUSDT"
+            autocomplete="off"
+        >
+
+    </div>
+
+
+    <div class="control-group">
+
+        <label for="timeframe">
+            TIMEFRAME
+        </label>
+
+        <select id="timeframe">
+
+            <option value="1m" selected>
+                1 Minute
+            </option>
+
+        </select>
+
+    </div>
+
+
+    <button
+        id="loadButton"
+        class="button primary"
+    >
+        Load Market
+    </button>
+
+</section>
+
+
+<!-- =========================================================
+     SYSTEM RULES
+========================================================== -->
+
+<section class="panel rules-panel">
+
+    <div class="panel-header">
 
         <div>
 
             <div class="eyebrow">
-                WEEX MARKET LAB
+                SYSTEM RULES
             </div>
 
-            <h1>
-                Market Microscope
-            </h1>
+            <h2>
+                Price Signal Engine
+            </h2>
 
-            <p>
-                Visual market analysis — no trading logic
-            </p>
+        </div>
+
+        <span class="rule-badge">
+            PRICE ONLY
+        </span>
+
+    </div>
+
+
+    <div class="rules-grid">
+
+        <div class="rule-card">
+
+            <span class="rule-label">
+                TREND WINDOW
+            </span>
+
+            <strong>
+                200 candles
+            </strong>
 
         </div>
 
 
-        <div class="connection-status">
+        <div class="rule-card">
 
-            <span class="status-dot"></span>
+            <span class="rule-label">
+                TREND REQUIRED
+            </span>
 
-            VISUAL MODE
-
-        </div>
-
-    </header>
-
-
-
-    <!-- ================================================== -->
-    <!-- CONTROLS -->
-    <!-- ================================================== -->
-
-    <section class="control-panel">
-
-
-        <div class="control-group">
-
-            <label for="symbol">
-                SYMBOL
-            </label>
-
-            <select id="symbol">
-
-                <option>
-                    POLUSDT
-                </option>
-
-                <option>
-                    BTCUSDT
-                </option>
-
-                <option>
-                    ETHUSDT
-                </option>
-
-                <option>
-                    ALGOUSDT
-                </option>
-
-                <option>
-                    DASHUSDT
-                </option>
-
-                <option>
-                    CAKEUSDT
-                </option>
-
-            </select>
+            <strong>
+                ≥ 80%
+            </strong>
 
         </div>
 
 
+        <div class="rule-card">
 
-        <div class="control-group">
+            <span class="rule-label">
+                ENTRY WINDOWS
+            </span>
 
-            <label for="timeframe">
-                TIMEFRAME
-            </label>
-
-            <select id="timeframe">
-
-                <option>
-                    1m
-                </option>
-
-                <option>
-                    5m
-                </option>
-
-                <option>
-                    15m
-                </option>
-
-                <option>
-                    30m
-                </option>
-
-                <option>
-                    1h
-                </option>
-
-            </select>
+            <strong>
+                15 / 20 / 30 / 60
+            </strong>
 
         </div>
 
 
+        <div class="rule-card">
 
-        <div class="control-group">
+            <span class="rule-label">
+                ENTRY REQUIRED
+            </span>
 
-            <label>
+            <strong>
+                ≥ 50%
+            </strong>
+
+        </div>
+
+
+        <div class="rule-card">
+
+            <span class="rule-label">
+                ENTRY CONFIRMATION
+            </span>
+
+            <strong>
+                3 OF 4
+            </strong>
+
+        </div>
+
+
+        <div class="rule-card">
+
+            <span class="rule-label">
+                CYCLE
+            </span>
+
+            <strong>
+                10 MINUTES
+            </strong>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- =========================================================
+     CURRENT SYSTEM STATUS
+========================================================== -->
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <div class="eyebrow">
+                CURRENT SIGNAL
+            </div>
+
+            <h2>
+                Live Price Decision
+            </h2>
+
+        </div>
+
+        <span
+            id="lastUpdate"
+            class="update-time"
+        >
+            --
+        </span>
+
+    </div>
+
+
+    <div class="signal-overview">
+
+        <div
+            id="finalDecisionCard"
+            class="decision-card neutral"
+        >
+
+            <span class="decision-label">
+                CURRENT DECISION
+            </span>
+
+            <strong id="finalDecision">
+                WAITING
+            </strong>
+
+            <span id="decisionReason">
+                Waiting for market data
+            </span>
+
+        </div>
+
+
+        <div class="cycle-card">
+
+            <span class="decision-label">
+                CURRENT CYCLE
+            </span>
+
+            <strong id="cycleProgress">
+                0 / 10
+            </strong>
+
+            <span id="cycleStatus">
+                Waiting
+            </span>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- =========================================================
+     TREND
+========================================================== -->
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <div class="eyebrow">
+                TREND
+            </div>
+
+            <h2>
+                200 Candle Direction
+            </h2>
+
+        </div>
+
+        <span
+            id="trendBadge"
+            class="signal-badge neutral"
+        >
+            WAITING
+        </span>
+
+    </div>
+
+
+    <div class="trend-main">
+
+        <div>
+
+            <span class="metric-label">
+                TREND DIRECTION
+            </span>
+
+            <strong
+                id="trendDirection"
+                class="big-direction"
+            >
+                --
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span class="metric-label">
+                STRENGTH
+            </span>
+
+            <strong id="trendStrength">
+                --
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span class="metric-label">
+                UP MOVEMENT
+            </span>
+
+            <strong id="trendLongMovement">
+                --
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span class="metric-label">
+                DOWN MOVEMENT
+            </span>
+
+            <strong id="trendShortMovement">
+                --
+            </strong>
+
+        </div>
+
+    </div>
+
+
+    <div class="strength-bar">
+
+        <div
+            id="trendStrengthBar"
+            class="strength-fill"
+        >
+        </div>
+
+    </div>
+
+
+    <div
+        id="trendMessage"
+        class="info-message"
+    >
+        Waiting for 200 candles...
+    </div>
+
+</section>
+
+
+<!-- =========================================================
+     ENTRY WINDOWS
+========================================================== -->
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <div class="eyebrow">
+                ENTRY CONFIRMATION
+            </div>
+
+            <h2>
+                15 / 20 / 30 / 60 Candle Entry
+            </h2>
+
+        </div>
+
+        <span
+            id="entryConfirmationBadge"
+            class="signal-badge neutral"
+        >
+            WAITING
+        </span>
+
+    </div>
+
+
+    <div class="entry-grid">
+
+
+        <!-- 15 -->
+
+        <div
+            id="entryCard15"
+            class="entry-card"
+        >
+
+            <div class="entry-header">
+
+                <strong>
+                    15 CANDLES
+                </strong>
+
+                <span
+                    id="entryDirection15"
+                    class="entry-direction neutral"
+                >
+                    --
+                </span>
+
+            </div>
+
+
+            <div class="entry-strength">
+
+                <strong id="entryStrength15">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="entry-details">
+
+                <span>
+                    Up
+                </span>
+
+                <strong id="entryUp15">
+                    --
+                </strong>
+
+                <span>
+                    Down
+                </span>
+
+                <strong id="entryDown15">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="entry-status">
+                <span id="entryStatus15">
+                    Waiting
+                </span>
+            </div>
+
+        </div>
+
+
+        <!-- 20 -->
+
+        <div
+            id="entryCard20"
+            class="entry-card"
+        >
+
+            <div class="entry-header">
+
+                <strong>
+                    20 CANDLES
+                </strong>
+
+                <span
+                    id="entryDirection20"
+                    class="entry-direction neutral"
+                >
+                    --
+                </span>
+
+            </div>
+
+
+            <div class="entry-strength">
+
+                <strong id="entryStrength20">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="entry-details">
+
+                <span>
+                    Up
+                </span>
+
+                <strong id="entryUp20">
+                    --
+                </strong>
+
+                <span>
+                    Down
+                </span>
+
+                <strong id="entryDown20">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="entry-status">
+                <span id="entryStatus20">
+                    Waiting
+                </span>
+            </div>
+
+        </div>
+
+
+        <!-- 30 -->
+
+        <div
+            id="entryCard30"
+            class="entry-card"
+        >
+
+            <div class="entry-header">
+
+                <strong>
+                    30 CANDLES
+                </strong>
+
+                <span
+                    id="entryDirection30"
+                    class="entry-direction neutral"
+                >
+                    --
+                </span>
+
+            </div>
+
+
+            <div class="entry-strength">
+
+                <strong id="entryStrength30">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="entry-details">
+
+                <span>
+                    Up
+                </span>
+
+                <strong id="entryUp30">
+                    --
+                </strong>
+
+                <span>
+                    Down
+                </span>
+
+                <strong id="entryDown30">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="entry-status">
+                <span id="entryStatus30">
+                    Waiting
+                </span>
+            </div>
+
+        </div>
+
+
+        <!-- 60 -->
+
+        <div
+            id="entryCard60"
+            class="entry-card"
+        >
+
+            <div class="entry-header">
+
+                <strong>
+                    60 CANDLES
+                </strong>
+
+                <span
+                    id="entryDirection60"
+                    class="entry-direction neutral"
+                >
+                    --
+                </span>
+
+            </div>
+
+
+            <div class="entry-strength">
+
+                <strong id="entryStrength60">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="entry-details">
+
+                <span>
+                    Up
+                </span>
+
+                <strong id="entryUp60">
+                    --
+                </strong>
+
+                <span>
+                    Down
+                </span>
+
+                <strong id="entryDown60">
+                    --
+                </strong>
+
+            </div>
+
+
+            <div class="entry-status">
+                <span id="entryStatus60">
+                    Waiting
+                </span>
+            </div>
+
+        </div>
+
+
+    </div>
+
+</section>
+
+
+<!-- =========================================================
+     PRICE MOVEMENT
+========================================================== -->
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <div class="eyebrow">
+                PRICE MOVEMENT
+            </div>
+
+            <h2>
+                Recent Price Change
+            </h2>
+
+        </div>
+
+    </div>
+
+
+    <div class="price-change-panel">
+
+        <div class="change-card">
+
+            <span class="change-label">
+                CURRENT CANDLE
+            </span>
+
+            <strong id="changeCurrent">
+                --
+            </strong>
+
+            <span class="change-description">
+                1 minute
+            </span>
+
+        </div>
+
+
+        <div class="change-card">
+
+            <span class="change-label">
+                5 CANDLES
+            </span>
+
+            <strong id="change5">
+                --
+            </strong>
+
+            <span class="change-description">
+                5 minutes
+            </span>
+
+        </div>
+
+
+        <div class="change-card">
+
+            <span class="change-label">
+                10 CANDLES
+            </span>
+
+            <strong id="change10">
+                --
+            </strong>
+
+            <span class="change-description">
+                10 minutes
+            </span>
+
+        </div>
+
+
+        <div class="change-card">
+
+            <span class="change-label">
+                20 CANDLES
+            </span>
+
+            <strong id="change20">
+                --
+            </strong>
+
+            <span class="change-description">
+                20 minutes
+            </span>
+
+        </div>
+
+
+        <div class="change-card">
+
+            <span class="change-label">
+                60 CANDLES
+            </span>
+
+            <strong id="change60">
+                --
+            </strong>
+
+            <span class="change-description">
+                60 minutes
+            </span>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- =========================================================
+     PRICE CHART
+========================================================== -->
+
+<section class="panel chart-panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <div class="eyebrow">
                 MARKET
-            </label>
-
-            <div
-                id="marketStatus"
-                class="market-status"
-            >
-                READY
             </div>
+
+            <h2>
+                Price Chart
+            </h2>
 
         </div>
 
-
-    </section>
-
-
-
-    <!-- ================================================== -->
-    <!-- PRICE -->
-    <!-- ================================================== -->
-
-    <section class="chart-panel">
-
-
-        <div class="panel-header">
-
-
-            <div>
-
-                <span class="panel-label">
-                    PRICE
-                </span>
-
-                <h2>
-                    Candlestick Chart
-                </h2>
-
-            </div>
-
-
-            <div
-                id="currentPrice"
-                class="panel-value"
-            >
-                —
-            </div>
-
-
-        </div>
-
-
-        <div
-            id="priceChart"
-            class="chart-area"
-        ></div>
-
-
-    </section>
-
-
-
-    <!-- ================================================== -->
-    <!-- DELTA -->
-    <!-- ================================================== -->
-
-    <section class="chart-panel delta-panel">
-
-
-        <div class="panel-header">
-
-
-            <div>
-
-                <span class="panel-label">
-                    ORDER FLOW
-                </span>
-
-                <h2>
-                    Delta
-                </h2>
-
-            </div>
-
-
-            <div
-                id="deltaValue"
-                class="delta-value"
-            >
-                —
-            </div>
-
-
-        </div>
-
-
-        <div
-            id="deltaChart"
-            class="delta-area"
-        ></div>
-
-
-    </section>
-
-
-
-    <!-- ================================================== -->
-    <!-- CUMULATIVE DELTA -->
-    <!-- ================================================== -->
-
-    <section class="chart-panel cumulative-panel">
-
-
-        <div class="panel-header">
-
-
-            <div>
-
-                <span class="panel-label">
-                    ORDER FLOW
-                </span>
-
-                <h2>
-                    Cumulative Delta
-                </h2>
-
-            </div>
-
-
-            <div
-                id="cumulativeDeltaValue"
-                class="cumulative-value"
-            >
-                —
-            </div>
-
-
-        </div>
-
-
-        <div
-            id="cumulativeDeltaChart"
-            class="cumulative-area"
-        ></div>
-
-
-    </section>
-
-
-
-    <!-- ================================================== -->
-    <!-- FOOTER -->
-    <!-- ================================================== -->
-
-    <footer class="lab-footer">
-
-        <span>
-            WEEX MARKET LAB
+        <span id="candleCount">
+            --
         </span>
 
-        <span>
-            VISUAL ANALYSIS ONLY
+    </div>
+
+
+    <div
+        id="priceChart"
+        class="price-chart"
+    >
+    </div>
+
+</section>
+
+
+<!-- =========================================================
+     CURRENT CYCLE HISTORY
+========================================================== -->
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <div class="eyebrow">
+                CURRENT CYCLE
+            </div>
+
+            <h2>
+                10 Minute Decision History
+            </h2>
+
+        </div>
+
+        <span id="cycleHistoryCount">
+            0 / 10
         </span>
 
-    </footer>
+    </div>
+
+
+    <div class="table-wrapper">
+
+        <table class="history-table">
+
+            <thead>
+
+                <tr>
+
+                    <th>
+                        Time
+                    </th>
+
+                    <th>
+                        Coin
+                    </th>
+
+                    <th>
+                        Trend
+                    </th>
+
+                    <th>
+                        15
+                    </th>
+
+                    <th>
+                        20
+                    </th>
+
+                    <th>
+                        30
+                    </th>
+
+                    <th>
+                        60
+                    </th>
+
+                    <th>
+                        Decision
+                    </th>
+
+                </tr>
+
+            </thead>
+
+            <tbody id="currentCycleTable">
+
+                <tr>
+
+                    <td colspan="8" class="empty-table">
+                        Waiting for first 1-minute calculation...
+                    </td>
+
+                </tr>
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</section>
+
+
+<!-- =========================================================
+     PREVIOUS CYCLE HISTORY
+========================================================== -->
+
+<section class="panel">
+
+    <div class="panel-header">
+
+        <div>
+
+            <div class="eyebrow">
+                PREVIOUS CYCLES
+            </div>
+
+            <h2>
+                Completed Cycle History
+            </h2>
+
+        </div>
+
+        <span id="completedCycleCount">
+            0 cycles
+        </span>
+
+    </div>
+
+
+    <div class="table-wrapper">
+
+        <table class="history-table">
+
+            <thead>
+
+                <tr>
+
+                    <th>
+                        Time
+                    </th>
+
+                    <th>
+                        Coin
+                    </th>
+
+                    <th>
+                        Trend
+                    </th>
+
+                    <th>
+                        Entry Votes
+                    </th>
+
+                    <th>
+                        Decision
+                    </th>
+
+                    <th>
+                        Reason
+                    </th>
+
+                </tr>
+
+            </thead>
+
+            <tbody id="previousCycleTable">
+
+                <tr>
+
+                    <td colspan="6" class="empty-table">
+                        No completed cycles yet.
+                    </td>
+
+                </tr>
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</section>
+
+
+<!-- =========================================================
+     FOOTER
+========================================================== -->
+
+<footer class="footer">
+
+    <span>
+        Price-only experimental system
+    </span>
+
+    <span>
+        No order-book • No trading • No TP/SL
+    </span>
+
+</footer>
 
 
 </div>
 
-
-
 <script
-    src="chart.js"
-></script>
+    src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js">
+</script>
 
+<script src="/chart/chart.js"></script>
 
 </body>
 

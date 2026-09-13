@@ -1,154 +1,541 @@
-"use strict";
+/* ============================================================
+WEEX PRICE SIGNAL LAB
+=====================
+
+PRICE ONLY
+
+CAVEMAN TREND + PULLBACK LOGIC:
+
+TREND:
+200 candles
+Direction must be >= 50%
+
+ENTRY / PULLBACK:
+
+If 200 TREND = LONG:
+3 of 4 SHORT = LONG SIGNAL
+
+If 200 TREND = SHORT:
+3 of 4 LONG = SHORT SIGNAL
+
+ENTRY WINDOWS:
+15 / 20 / 30 / 60 candles
+
+CYCLE:
+10 one-minute calculations
+
+CHART:
+Berlin local time display
+LONG / SHORT signal markers
+COMPLETED CYCLE markers
+
+NO:
+Order book
+Trading
+TP / SL
+Backtesting
+
+============================================================ */
 
 
-// ============================================================
-// WEEX MARKET LAB
-// ============================================================
-//
-// PRICE
-//   ↓
-// DELTA
-//   ↓
-// CUMULATIVE DELTA
-//
-// VISUAL ONLY.
-//
-// NO TRADING.
-// NO ORDERS.
-// NO POSITIONS.
-// NO AUTOMATIC TRADER.
-// ============================================================
+/* ============================================================
+CONFIG
+============================================================ */
+
+const TREND_CANDLES = 200;
+
+const ENTRY_WINDOWS = [
+    15,
+    20,
+    30,
+    60
+];
+
+const TREND_REQUIRED = 53;
+
+const ENTRY_REQUIRED = 50;
+
+const ENTRY_CONFIRMATIONS_REQUIRED = 3;
+
+const CYCLE_LENGTH = 10;
+
+const HISTORY_LIMIT = 500;
+
+const KLINE_LIMIT = 1000;
+
+const REFRESH_BUFFER_MS = 1200;
 
 
-// ============================================================
-// GLOBALS
-// ============================================================
+/* ============================================================
+STATE
+============================================================ */
 
 let priceChart = null;
+
 let candleSeries = null;
-
-let deltaChart = null;
-let deltaSeries = null;
-
-let cumulativeDeltaChart = null;
-let cumulativeDeltaSeries = null;
 
 let currentCandles = [];
 
+let currentSymbol = "POLUSDT";
 
-// ============================================================
-// START
-// ============================================================
+let currentTimeframe = "1m";
 
-document.addEventListener(
-    "DOMContentLoaded",
-    () => {
+let currentCycle = [];
 
-        console.log(
-            "=========================================="
+let cycleHistory = [];
+
+let refreshTimer = null;
+
+let loading = false;
+
+
+/*
+    All chart markers live here.
+
+    We keep them in browser memory for the
+    entire page session.
+*/
+let signalMarkers = [];
+
+
+/*
+    Lightweight Charts newer API uses:
+
+        LightweightCharts.createSeriesMarkers()
+
+    instead of:
+
+        candleSeries.setMarkers()
+
+    This controller manages the markers.
+*/
+let signalMarkerController = null;
+
+
+/*
+    Prevent duplicate markers.
+*/
+const signalMarkerKeys = new Set();
+
+
+/* ============================================================
+HELPERS
+============================================================ */
+
+function element(id) {
+
+    return document.getElementById(id);
+
+}
+
+
+function setText(id, value) {
+
+    const el = element(id);
+
+    if (!el) {
+        return;
+    }
+
+    el.textContent = value;
+
+}
+
+
+function escapeHtml(value) {
+
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+}
+
+
+function formatPercent(value) {
+
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+        return "--";
+    }
+
+    return `${number.toFixed(2)}%`;
+
+}
+
+
+function formatSignedPercent(value) {
+
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+        return "--";
+    }
+
+    if (number > 0) {
+        return `+${number.toFixed(2)}%`;
+    }
+
+    return `${number.toFixed(2)}%`;
+
+}
+
+
+/* ============================================================
+BERLIN TIME
+============================================================ */
+
+/*
+    All displayed times are explicitly forced to Berlin.
+
+    We do NOT modify WEEX candle timestamps.
+
+    We only change how the timestamps are displayed.
+*/
+
+function formatTime(timestamp) {
+
+    if (!timestamp) {
+        return "--";
+    }
+
+    const date =
+        new Date(timestamp);
+
+    if (
+        !Number.isFinite(
+            date.getTime()
+        )
+    ) {
+
+        return "--";
+
+    }
+
+    return date.toLocaleTimeString(
+        "de-DE",
+        {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+            timeZone: "Europe/Berlin"
+        }
+    );
+
+}
+
+
+/*
+    Lightweight Charts sends Unix seconds
+    to the formatter.
+
+    Display in Berlin time.
+*/
+
+function formatChartTime(timestamp) {
+
+    const number =
+        Number(timestamp);
+
+    if (!Number.isFinite(number)) {
+        return "";
+    }
+
+    const date =
+        new Date(
+            number * 1000
         );
 
-        console.log(
-            "WEEX MARKET LAB"
+    if (
+        !Number.isFinite(
+            date.getTime()
+        )
+    ) {
+
+        return "";
+
+    }
+
+    return date.toLocaleTimeString(
+        "de-DE",
+        {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "Europe/Berlin"
+        }
+    );
+
+}
+
+
+function formatChartTick(timestamp) {
+
+    const number =
+        Number(timestamp);
+
+    if (!Number.isFinite(number)) {
+        return "";
+    }
+
+    const date =
+        new Date(
+            number * 1000
         );
 
-        console.log(
-            "PRICE + DELTA + CUMULATIVE DELTA"
-        );
+    if (
+        !Number.isFinite(
+            date.getTime()
+        )
+    ) {
 
-        console.log(
-            "=========================================="
-        );
+        return "";
+
+    }
+
+    return date.toLocaleTimeString(
+        "de-DE",
+        {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "Europe/Berlin"
+        }
+    );
+
+}
 
 
-        // ----------------------------------------------------
-        // DO NOT RUN FROM FILE://
-        // ----------------------------------------------------
+/* ============================================================
+CONNECTION
+============================================================ */
+
+function setConnection(online) {
+
+    const dot =
+        element("connectionDot");
+
+    const text =
+        element("connectionText");
+
+    if (!dot || !text) {
+        return;
+    }
+
+    dot.className =
+        online
+            ? "status-dot online"
+            : "status-dot offline";
+
+    text.textContent =
+        online
+            ? "ONLINE"
+            : "OFFLINE";
+
+}
+
+
+/* ============================================================
+DIRECTION CLASS
+============================================================ */
+
+function directionClass(direction) {
+
+    if (direction === "LONG") {
+        return "long";
+    }
+
+    if (direction === "SHORT") {
+        return "short";
+    }
+
+    return "neutral";
+
+}
+
+
+/* ============================================================
+WEEX CANDLE CONVERSION
+============================================================ */
+
+function convertWEEXCandles(data) {
+
+    if (!Array.isArray(data)) {
+        return [];
+    }
+
+    const candles = [];
+
+
+    for (const raw of data) {
 
         if (
-            window.location.protocol ===
-            "file:"
+            !Array.isArray(raw) ||
+            raw.length < 5
         ) {
 
-            console.error(
-                "=================================================="
-            );
-
-            console.error(
-                "WEEX MARKET LAB ERROR"
-            );
-
-            console.error(
-                "chart.html was opened using file://"
-            );
-
-            console.error(
-                "Open:"
-            );
-
-            console.error(
-                "http://localhost:3000/chart/chart.html"
-            );
-
-            console.error(
-                "=================================================="
-            );
-
-
-            setMarketStatus(
-                "OPEN VIA SERVER"
-            );
-
-
-            const priceElement =
-                document.getElementById(
-                    "currentPrice"
-                );
-
-
-            if (
-                priceElement
-            ) {
-
-                priceElement.textContent =
-                    "OPEN VIA LOCALHOST";
-
-            }
-
-
-            return;
+            continue;
 
         }
 
 
-        createPriceChart();
+        const timestamp =
+            Number(raw[0]);
 
-        createDeltaChart();
+        const open =
+            Number(raw[1]);
 
-        createCumulativeDeltaChart();
+        const high =
+            Number(raw[2]);
+
+        const low =
+            Number(raw[3]);
+
+        const close =
+            Number(raw[4]);
+
+        const volume =
+            Number(raw[5] ?? 0);
+
+
+        if (
+            !Number.isFinite(timestamp) ||
+            !Number.isFinite(open) ||
+            !Number.isFinite(high) ||
+            !Number.isFinite(low) ||
+            !Number.isFinite(close)
+        ) {
+
+            continue;
+
+        }
+
+
+        candles.push({
+
+            time:
+                timestamp > 100000000000
+                    ? Math.floor(timestamp / 1000)
+                    : timestamp,
+
+            open,
+            high,
+            low,
+            close,
+            volume
+
+        });
 
     }
-);
 
 
-// ============================================================
-// PRICE CHART
-// ============================================================
+    /*
+        WEEX should already return chronological data,
+        but we sort it anyway.
+    */
+
+    candles.sort(
+        (a, b) =>
+            a.time - b.time
+    );
+
+
+    /*
+        Remove duplicate timestamps.
+    */
+
+    const unique = [];
+
+
+    for (const candle of candles) {
+
+        const previous =
+            unique[
+                unique.length - 1
+            ];
+
+
+        if (
+            previous &&
+            previous.time === candle.time
+        ) {
+
+            unique[
+                unique.length - 1
+            ] = candle;
+
+        } else {
+
+            unique.push(candle);
+
+        }
+
+    }
+
+
+    return unique;
+
+}
+
+
+/* ============================================================
+LOAD WEEX KLINES
+============================================================ */
+
+async function fetchCandles() {
+
+    const url =
+        `/chart/klines` +
+        `?symbol=${encodeURIComponent(currentSymbol)}` +
+        `&interval=${encodeURIComponent(currentTimeframe)}` +
+        `&limit=${KLINE_LIMIT}`;
+
+
+    const response =
+        await fetch(
+            url,
+            {
+                cache: "no-store"
+            }
+        );
+
+
+    if (!response.ok) {
+
+        throw new Error(
+            `Kline request failed: HTTP ${response.status}`
+        );
+
+    }
+
+
+    const data =
+        await response.json();
+
+
+    return convertWEEXCandles(data);
+
+}
+
+
+/* ============================================================
+PRICE CHART
+============================================================ */
 
 function createPriceChart() {
 
     const container =
-        document.getElementById(
-            "priceChart"
-        );
+        element("priceChart");
 
 
-    if (
-        !container
-    ) {
+    if (!container) {
 
         console.error(
-            "PRICE CHART CONTAINER NOT FOUND"
+            "PRICE CHART CONTAINER NOT FOUND."
         );
 
         return;
@@ -162,7 +549,7 @@ function createPriceChart() {
     ) {
 
         console.error(
-            "LIGHTWEIGHT CHARTS NOT LOADED"
+            "Lightweight Charts is not available."
         );
 
         return;
@@ -178,12 +565,10 @@ function createPriceChart() {
                 layout: {
 
                     background: {
-                        color:
-                            "#090e14"
+                        color: "#111720"
                     },
 
-                    textColor:
-                        "#7d8998"
+                    textColor: "#8b98a7"
 
                 },
 
@@ -191,13 +576,11 @@ function createPriceChart() {
                 grid: {
 
                     vertLines: {
-                        color:
-                            "#151d27"
+                        color: "#1c2530"
                     },
 
                     horzLines: {
-                        color:
-                            "#151d27"
+                        color: "#1c2530"
                     }
 
                 },
@@ -206,7 +589,7 @@ function createPriceChart() {
                 rightPriceScale: {
 
                     borderColor:
-                        "#202b38"
+                        "#27313d"
 
                 },
 
@@ -214,13 +597,29 @@ function createPriceChart() {
                 timeScale: {
 
                     borderColor:
-                        "#202b38",
+                        "#27313d",
 
                     timeVisible:
                         true,
 
                     secondsVisible:
-                        false
+                        false,
+
+                    /*
+                        Force chart labels to
+                        Berlin local time.
+                    */
+
+                    tickMarkFormatter:
+                        formatChartTick
+
+                },
+
+
+                localization: {
+
+                    timeFormatter:
+                        formatChartTime
 
                 },
 
@@ -228,9 +627,9 @@ function createPriceChart() {
                 crosshair: {
 
                     mode:
-                        LightweightCharts
-                            .CrosshairMode
-                            .Normal
+                        LightweightCharts.CrosshairMode
+                            ? LightweightCharts.CrosshairMode.Normal
+                            : 0
 
                 }
 
@@ -238,816 +637,3231 @@ function createPriceChart() {
         );
 
 
+    /*
+        Modern Lightweight Charts API.
+
+        IMPORTANT:
+
+        Do NOT use:
+
+            candleSeries.setMarkers()
+
+        with this version.
+    */
+
     candleSeries =
         priceChart.addSeries(
-            LightweightCharts
-                .CandlestickSeries,
+            LightweightCharts.CandlestickSeries,
             {
 
                 upColor:
-                    "#21d38a",
+                    "#26a69a",
 
                 downColor:
-                    "#ff5268",
+                    "#ef5350",
 
                 borderVisible:
                     false,
 
                 wickUpColor:
-                    "#21d38a",
+                    "#26a69a",
 
                 wickDownColor:
-                    "#ff5268"
+                    "#ef5350"
 
             }
         );
 
 
-    loadWEEXCandles();
+    /*
+        Prepare the marker controller.
+
+        We do not create it until the
+        candle series exists.
+    */
+
+    signalMarkerController = null;
 
 }
 
 
-// ============================================================
-// DELTA CHART
-// ============================================================
+/* ============================================================
+MARKER HELPERS
+============================================================ */
 
-function createDeltaChart() {
+function getMarkerTimeFromMilliseconds(
+    timestamp
+) {
 
-    const container =
-        document.getElementById(
-            "deltaChart"
-        );
+    const milliseconds =
+        Number(timestamp);
 
 
     if (
-        !container
+        !Number.isFinite(
+            milliseconds
+        )
     ) {
 
-        console.error(
-            "DELTA CHART CONTAINER NOT FOUND"
-        );
-
-        return;
+        return null;
 
     }
 
 
-    if (
-        typeof LightweightCharts ===
-        "undefined"
-    ) {
-
-        console.error(
-            "LIGHTWEIGHT CHARTS NOT LOADED"
+    const seconds =
+        Math.floor(
+            milliseconds / 1000
         );
 
-        return;
+
+    if (
+        !Number.isFinite(seconds)
+    ) {
+
+        return null;
 
     }
 
 
-    deltaChart =
-        LightweightCharts.createChart(
-            container,
-            {
+    return seconds;
 
-                layout: {
-
-                    background: {
-                        color:
-                            "#090e14"
-                    },
-
-                    textColor:
-                        "#7d8998"
-
-                },
+}
 
 
-                grid: {
+/*
+    Re-create / update the modern
+    Lightweight Charts marker controller.
+*/
+function updateSignalMarkers() {
 
-                    vertLines: {
-                        color:
-                            "#151d27"
-                    },
-
-                    horzLines: {
-                        color:
-                            "#151d27"
-                    }
-
-                },
+    if (!candleSeries) {
+        return;
+    }
 
 
-                rightPriceScale: {
+    /*
+        Modern Lightweight Charts.
 
-                    borderColor:
-                        "#202b38"
+        This is the API used by the
+        current chart library.
+    */
 
-                },
+    if (
+        typeof LightweightCharts !== "undefined" &&
+        typeof LightweightCharts.createSeriesMarkers === "function"
+    ) {
 
+        try {
 
-                timeScale: {
+            if (!signalMarkerController) {
 
-                    borderColor:
-                        "#202b38",
+                signalMarkerController =
+                    LightweightCharts.createSeriesMarkers(
+                        candleSeries,
+                        signalMarkers
+                    );
 
-                    timeVisible:
-                        true,
+            } else {
 
-                    secondsVisible:
-                        false
-
-                }
+                signalMarkerController.setMarkers(
+                    signalMarkers
+                );
 
             }
-        );
+
+            return;
+
+        } catch (error) {
+
+            console.error(
+                "SIGNAL MARKER ERROR:",
+                error
+            );
+
+            return;
+
+        }
+
+    }
 
 
-    deltaSeries =
-        deltaChart.addSeries(
-            LightweightCharts
-                .HistogramSeries,
-            {
+    /*
+        If the installed Lightweight Charts
+        library is too old/new for the expected
+        marker API, do NOT crash the entire
+        Price Lab.
 
-                priceFormat: {
+        The chart itself continues working.
+    */
 
-                    type:
-                        "volume"
-
-                },
-
-                priceScaleId:
-                    "right"
-
-            }
-        );
-
-
-    deltaChart
-        .priceScale("right")
-        .applyOptions(
-            {
-
-                scaleMargins: {
-
-                    top:
-                        0.10,
-
-                    bottom:
-                        0.10
-
-                }
-
-            }
-        );
-
-
-    deltaSeries.setData(
-        []
+    console.warn(
+        "Lightweight Charts marker API is not available. Chart markers are disabled."
     );
 
 }
 
 
-// ============================================================
-// CUMULATIVE DELTA CHART
-// ============================================================
+/* ============================================================
+CLEAR SIGNAL MARKERS
+============================================================ */
 
-function createCumulativeDeltaChart() {
+function clearSignalMarkers() {
 
-    const container =
-        document.getElementById(
-            "cumulativeDeltaChart"
-        );
+    signalMarkers = [];
+
+    signalMarkerKeys.clear();
 
 
     if (
-        !container
+        signalMarkerController &&
+        typeof signalMarkerController.setMarkers === "function"
     ) {
 
-        console.error(
-            "CUMULATIVE DELTA CONTAINER NOT FOUND"
-        );
+        try {
+
+            signalMarkerController.setMarkers([]);
+
+        } catch (error) {
+
+            console.error(
+                "CLEAR MARKERS ERROR:",
+                error
+            );
+
+        }
+
+    }
+
+
+    /*
+        Reset controller.
+
+        This is useful when switching
+        to a completely different symbol.
+    */
+
+    signalMarkerController = null;
+
+
+    /*
+        Recreate empty controller if possible.
+    */
+
+    updateSignalMarkers();
+
+}
+
+
+/* ============================================================
+ADD INDIVIDUAL SIGNAL MARKER
+============================================================ */
+
+function addSignalMarker(snapshot) {
+
+    if (
+        !snapshot ||
+        !candleSeries
+    ) {
 
         return;
 
     }
 
 
-    if (
-        typeof LightweightCharts ===
-        "undefined"
-    ) {
+    /*
+        Only directional final decisions
+        receive markers.
 
-        console.error(
-            "LIGHTWEIGHT CHARTS NOT LOADED"
-        );
+        NEUTRAL = no marker.
+    */
+
+    if (
+        snapshot.decision !== "LONG" &&
+        snapshot.decision !== "SHORT"
+    ) {
 
         return;
 
     }
 
 
-    cumulativeDeltaChart =
-        LightweightCharts.createChart(
-            container,
-            {
-
-                layout: {
-
-                    background: {
-                        color:
-                            "#090e14"
-                    },
-
-                    textColor:
-                        "#7d8998"
-
-                },
-
-
-                grid: {
-
-                    vertLines: {
-                        color:
-                            "#151d27"
-                    },
-
-                    horzLines: {
-                        color:
-                            "#151d27"
-                    }
-
-                },
-
-
-                rightPriceScale: {
-
-                    borderColor:
-                        "#202b38"
-
-                },
-
-
-                timeScale: {
-
-                    borderColor:
-                        "#202b38",
-
-                    timeVisible:
-                        true,
-
-                    secondsVisible:
-                        false
-
-                }
-
-            }
+    const candleTime =
+        getMarkerTimeFromMilliseconds(
+            snapshot.candleTime
         );
 
 
-    cumulativeDeltaSeries =
-        cumulativeDeltaChart.addSeries(
-            LightweightCharts
-                .LineSeries,
-            {
+    if (
+        candleTime === null
+    ) {
 
-                lineWidth:
-                    2,
+        return;
 
-                priceLineVisible:
-                    false,
-
-                lastValueVisible:
-                    true,
-
-                priceScaleId:
-                    "right"
-
-            }
-        );
+    }
 
 
-    cumulativeDeltaChart
-        .priceScale("right")
-        .applyOptions(
-            {
+    /*
+        Unique key:
 
-                scaleMargins: {
+            timestamp + decision
 
-                    top:
-                        0.10,
+        This prevents duplicate markers
+        when the same candle is fetched
+        multiple times.
+    */
 
-                    bottom:
-                        0.10
-
-                }
-
-            }
-        );
+    const markerKey =
+        `${candleTime}_${snapshot.decision}`;
 
 
-    cumulativeDeltaSeries.setData(
-        []
+    if (
+        signalMarkerKeys.has(markerKey)
+    ) {
+
+        return;
+
+    }
+
+
+    signalMarkerKeys.add(
+        markerKey
     );
 
 
-    // ========================================================
-    // SYNCHRONIZE PRICE
-    // WITH CUMULATIVE DELTA
-    // ========================================================
+    signalMarkers.push({
 
-    if (
-        priceChart
+        time:
+            candleTime,
+
+        position:
+            snapshot.decision === "LONG"
+                ? "belowBar"
+                : "aboveBar",
+
+        shape:
+            snapshot.decision === "LONG"
+                ? "arrowUp"
+                : "arrowDown",
+
+        color:
+            snapshot.decision === "LONG"
+                ? "#26a69a"
+                : "#ef5350",
+
+        text:
+            snapshot.decision,
+
+        size:
+            2
+
+    });
+
+
+    /*
+        Lightweight Charts requires
+        markers to be sorted.
+    */
+
+    signalMarkers.sort(
+        (a, b) =>
+            a.time - b.time
+    );
+
+
+    /*
+        Keep the one-day test lightweight.
+
+        1000 markers is more than enough.
+    */
+
+    while (
+        signalMarkers.length > 1000
     ) {
 
-        let syncingFromPrice =
-            false;
-
-        let syncingFromCumulative =
-            false;
+        const removed =
+            signalMarkers.shift();
 
 
-        priceChart
-            .timeScale()
-            .subscribeVisibleLogicalRangeChange(
-                (
-                    range
-                ) => {
+        if (removed) {
 
-                    if (
-                        syncingFromCumulative ||
-                        !range
-                    ) {
+            for (
+                const key of signalMarkerKeys
+            ) {
 
-                        return;
+                if (
+                    key.startsWith(
+                        `${removed.time}_`
+                    )
+                ) {
 
-                    }
-
-
-                    syncingFromPrice =
-                        true;
-
-
-                    if (
-                        deltaChart
-                    ) {
-
-                        deltaChart
-                            .timeScale()
-                            .setVisibleLogicalRange(
-                                range
-                            );
-
-                    }
-
-
-                    if (
-                        cumulativeDeltaChart
-                    ) {
-
-                        cumulativeDeltaChart
-                            .timeScale()
-                            .setVisibleLogicalRange(
-                                range
-                            );
-
-                    }
-
-
-                    syncingFromPrice =
-                        false;
+                    signalMarkerKeys.delete(
+                        key
+                    );
 
                 }
+
+            }
+
+        }
+
+    }
+
+
+    updateSignalMarkers();
+
+}
+
+
+/* ============================================================
+ADD COMPLETED CYCLE MARKER
+============================================================ */
+
+function addCycleMarker(cycle) {
+
+    if (
+        !cycle ||
+        !candleSeries
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        cycle.decision !== "LONG" &&
+        cycle.decision !== "SHORT"
+    ) {
+
+        return;
+
+    }
+
+
+    /*
+        Prefer the exact candle that
+        completed the cycle.
+    */
+
+    let candleTime =
+        getMarkerTimeFromMilliseconds(
+            cycle.endCandleTime
+        );
+
+
+    /*
+        Compatibility fallback.
+    */
+
+    if (candleTime === null) {
+
+        const endDate =
+            new Date(
+                cycle.endTime
             );
 
 
         if (
-            cumulativeDeltaChart
+            Number.isFinite(
+                endDate.getTime()
+            )
         ) {
 
-            cumulativeDeltaChart
-                .timeScale()
-                .subscribeVisibleLogicalRangeChange(
-                    (
-                        range
-                    ) => {
-
-                        if (
-                            syncingFromPrice ||
-                            !range
-                        ) {
-
-                            return;
-
-                        }
-
-
-                        syncingFromCumulative =
-                            true;
-
-
-                        priceChart
-                            .timeScale()
-                            .setVisibleLogicalRange(
-                                range
-                            );
-
-
-                        if (
-                            deltaChart
-                        ) {
-
-                            deltaChart
-                                .timeScale()
-                                .setVisibleLogicalRange(
-                                    range
-                                );
-
-                        }
-
-
-                        syncingFromCumulative =
-                            false;
-
-                    }
+            candleTime =
+                Math.floor(
+                    endDate.getTime() / 1000
                 );
 
         }
 
     }
 
-}
-
-
-// ============================================================
-// LOAD WEEX DATA
-// ============================================================
-
-async function loadWEEXCandles() {
-
-    // --------------------------------------------------------
-    // SAFETY
-    // --------------------------------------------------------
 
     if (
-        window.location.protocol ===
-        "file:"
+        candleTime === null
     ) {
-
-        console.error(
-            "CHART IS RUNNING FROM file://"
-        );
-
-        setMarketStatus(
-            "OPEN VIA SERVER"
-        );
 
         return;
 
     }
 
 
-    const symbolElement =
-        document.getElementById(
-            "symbol"
-        );
+    const text =
+        `CYCLE ${cycle.decision}`;
 
 
-    const timeframeElement =
-        document.getElementById(
-            "timeframe"
-        );
+    const markerKey =
+        `${candleTime}_${text}`;
 
 
-    const symbol =
-        symbolElement
-            ? String(
-                symbolElement.value
-            )
-                .trim()
-                .toUpperCase()
-            : "POLUSDT";
+    if (
+        signalMarkerKeys.has(
+            markerKey
+        )
+    ) {
+
+        return;
+
+    }
 
 
-    const interval =
-        timeframeElement
-            ? String(
-                timeframeElement.value
-            )
-                .trim()
-            : "1m";
-
-
-    setMarketStatus(
-        "LOADING..."
+    signalMarkerKeys.add(
+        markerKey
     );
 
 
-    try {
+    signalMarkers.push({
 
-        console.log(
-            "=========================================="
-        );
+        time:
+            candleTime,
 
-        console.log(
-            "LOADING WEEX MARKET DATA"
-        );
+        position:
+            cycle.decision === "LONG"
+                ? "belowBar"
+                : "aboveBar",
 
-        console.log(
-            "SYMBOL:",
-            symbol
-        );
+        shape:
+            cycle.decision === "LONG"
+                ? "arrowUp"
+                : "arrowDown",
 
-        console.log(
-            "TIMEFRAME:",
-            interval
-        );
+        color:
+            cycle.decision === "LONG"
+                ? "#00ff9d"
+                : "#ff405d",
 
+        text,
 
-        // ====================================================
-        // EXPRESS PROXY
-        // ====================================================
+        size:
+            3
 
-        const url =
-            `/chart/klines` +
-            `?symbol=${encodeURIComponent(
-                symbol
-            )}` +
-            `&interval=${encodeURIComponent(
-                interval
-            )}` +
-            `&limit=300`;
+    });
 
 
-        console.log(
-            "KLINE URL:",
-            url
-        );
+    signalMarkers.sort(
+        (a, b) =>
+            a.time - b.time
+    );
 
 
-        const response =
-            await fetch(
-                url
-            );
+    updateSignalMarkers();
 
+}
+
+
+/* ============================================================
+REBUILD SIGNAL MARKERS
+============================================================ */
+
+function rebuildSignalMarkers() {
+
+    if (!candleSeries) {
+        return;
+    }
+
+
+    signalMarkers = [];
+
+    signalMarkerKeys.clear();
+
+
+    /*
+        --------------------------------------------------------
+        COMPLETED CYCLES
+        --------------------------------------------------------
+    */
+
+    for (
+        const cycle of cycleHistory
+    ) {
 
         if (
-            !response.ok
+            cycle.decision !== "LONG" &&
+            cycle.decision !== "SHORT"
         ) {
 
-            throw new Error(
-                `HTTP ${response.status}`
-            );
+            continue;
 
         }
 
 
-        const data =
-            await response.json();
-
-
-        console.log(
-            "WEEX KLINE RESPONSE:",
-            data
-        );
-
-
-        // ====================================================
-        // PRICE DATA
-        // ====================================================
-
-        const candles =
-            convertWEEXCandles(
-                data
+        let candleTime =
+            getMarkerTimeFromMilliseconds(
+                cycle.endCandleTime
             );
 
 
-        if (
-            candles.length === 0
-        ) {
+        /*
+            Compatibility with older cycle objects.
+        */
 
-            throw new Error(
-                "No valid candles received."
-            );
+        if (candleTime === null) {
+
+            const endDate =
+                new Date(
+                    cycle.endTime
+                );
+
+
+            if (
+                Number.isFinite(
+                    endDate.getTime()
+                )
+            ) {
+
+                candleTime =
+                    Math.floor(
+                        endDate.getTime() /
+                        1000
+                    );
+
+            }
 
         }
 
 
-        currentCandles =
-            candles;
+        if (
+            candleTime === null
+        ) {
+
+            continue;
+
+        }
 
 
-        const lastCandle =
-            candles[
-                candles.length - 1
-            ];
+        const text =
+            `CYCLE ${cycle.decision}`;
 
 
-        console.log(
-            "=========================================="
-        );
+        const markerKey =
+            `${candleTime}_${text}`;
 
-        console.log(
-            "WEEX CANDLES LOADED"
-        );
 
-        console.log(
-            "SYMBOL:",
-            symbol
-        );
+        if (
+            signalMarkerKeys.has(
+                markerKey
+            )
+        ) {
 
-        console.log(
-            "TIMEFRAME:",
-            interval
-        );
+            continue;
 
-        console.log(
-            "CANDLES:",
-            candles.length
-        );
+        }
 
-        console.log(
-            "LAST PRICE:",
-            lastCandle.close
-        );
 
-        console.log(
-            "=========================================="
+        signalMarkerKeys.add(
+            markerKey
         );
 
 
-        // ====================================================
-        // PRICE
-        // ====================================================
+        signalMarkers.push({
 
-        candleSeries.setData(
+            time:
+                candleTime,
+
+            position:
+                cycle.decision === "LONG"
+                    ? "belowBar"
+                    : "aboveBar",
+
+            shape:
+                cycle.decision === "LONG"
+                    ? "arrowUp"
+                    : "arrowDown",
+
+            color:
+                cycle.decision === "LONG"
+                    ? "#00ff9d"
+                    : "#ff405d",
+
+            text,
+
+            size:
+                3
+
+        });
+
+    }
+
+
+    /*
+        --------------------------------------------------------
+        CURRENT 1-MINUTE FINAL DECISIONS
+        --------------------------------------------------------
+    */
+
+    for (
+        const snapshot of currentCycle
+    ) {
+
+        if (
+            snapshot.decision !== "LONG" &&
+            snapshot.decision !== "SHORT"
+        ) {
+
+            continue;
+
+        }
+
+
+        const candleTime =
+            getMarkerTimeFromMilliseconds(
+                snapshot.candleTime
+            );
+
+
+        if (
+            candleTime === null
+        ) {
+
+            continue;
+
+        }
+
+
+        const markerKey =
+            `${candleTime}_${snapshot.decision}`;
+
+
+        if (
+            signalMarkerKeys.has(
+                markerKey
+            )
+        ) {
+
+            continue;
+
+        }
+
+
+        signalMarkerKeys.add(
+            markerKey
+        );
+
+
+        signalMarkers.push({
+
+            time:
+                candleTime,
+
+            position:
+                snapshot.decision === "LONG"
+                    ? "belowBar"
+                    : "aboveBar",
+
+            shape:
+                snapshot.decision === "LONG"
+                    ? "arrowUp"
+                    : "arrowDown",
+
+            color:
+                snapshot.decision === "LONG"
+                    ? "#26a69a"
+                    : "#ef5350",
+
+            text:
+                snapshot.decision,
+
+            size:
+                2
+
+        });
+
+    }
+
+
+    /*
+        Sort everything.
+    */
+
+    signalMarkers.sort(
+        (a, b) =>
+            a.time - b.time
+    );
+
+
+    /*
+        Final duplicate protection.
+    */
+
+    const unique = [];
+
+    const uniqueKeys =
+        new Set();
+
+
+    for (
+        const marker of signalMarkers
+    ) {
+
+        const key =
+            `${marker.time}_${marker.text}`;
+
+
+        if (
+            uniqueKeys.has(key)
+        ) {
+
+            continue;
+
+        }
+
+
+        uniqueKeys.add(key);
+
+        unique.push(
+            marker
+        );
+
+    }
+
+
+    signalMarkers =
+        unique;
+
+
+    signalMarkerKeys.clear();
+
+
+    for (
+        const marker of signalMarkers
+    ) {
+
+        signalMarkerKeys.add(
+            `${marker.time}_${marker.text}`
+        );
+
+    }
+
+
+    updateSignalMarkers();
+
+}
+
+
+/* ============================================================
+UPDATE PRICE CHART
+============================================================ */
+
+function updatePriceChart(candles) {
+
+    if (
+        !candleSeries ||
+        !Array.isArray(candles)
+    ) {
+
+        return;
+
+    }
+
+
+    candleSeries.setData(
+        candles
+    );
+
+
+    /*
+        Rebuild markers after candle data.
+    */
+
+    rebuildSignalMarkers();
+
+
+    priceChart
+        ?.timeScale()
+        .fitContent();
+
+
+    setText(
+        "candleCount",
+        `${candles.length} candles`
+    );
+
+}
+
+
+/* ============================================================
+BASIC PRICE MOVEMENT
+============================================================ */
+
+function calculateCandleChange(candle) {
+
+    if (
+        !candle ||
+        !Number.isFinite(candle.open) ||
+        candle.open === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    return (
+        (
+            candle.close -
+            candle.open
+        ) /
+        candle.open
+    ) * 100;
+
+}
+
+
+function calculateLookbackChange(
+    candles,
+    candleCount
+) {
+
+    if (
+        !Array.isArray(candles) ||
+        candles.length <= candleCount
+    ) {
+
+        return null;
+
+    }
+
+
+    const current =
+        candles[
+            candles.length - 1
+        ];
+
+
+    const previous =
+        candles[
+            candles.length -
+            1 -
+            candleCount
+        ];
+
+
+    if (
+        !current ||
+        !previous ||
+        !Number.isFinite(
+            previous.close
+        ) ||
+        previous.close === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    return (
+        (
+            current.close -
+            previous.close
+        ) /
+        previous.close
+    ) * 100;
+
+}
+
+
+function setPercentageValue(
+    id,
+    value
+) {
+
+    const el =
+        element(id);
+
+
+    if (!el) {
+        return;
+    }
+
+
+    el.textContent =
+        formatSignedPercent(value);
+
+
+    el.classList.remove(
+        "positive",
+        "negative"
+    );
+
+
+    if (Number(value) > 0) {
+
+        el.classList.add(
+            "positive"
+        );
+
+    }
+
+
+    if (Number(value) < 0) {
+
+        el.classList.add(
+            "negative"
+        );
+
+    }
+
+}
+
+
+function updatePriceMovement(candles) {
+
+    if (!candles.length) {
+        return;
+    }
+
+
+    const current =
+        candles[
+            candles.length - 1
+        ];
+
+
+    setPercentageValue(
+        "changeCurrent",
+        calculateCandleChange(
+            current
+        )
+    );
+
+
+    setPercentageValue(
+        "change5",
+        calculateLookbackChange(
+            candles,
+            5
+        )
+    );
+
+
+    setPercentageValue(
+        "change10",
+        calculateLookbackChange(
+            candles,
+            10
+        )
+    );
+
+
+    setPercentageValue(
+        "change20",
+        calculateLookbackChange(
+            candles,
+            20
+        )
+    );
+
+
+    setPercentageValue(
+        "change60",
+        calculateLookbackChange(
+            candles,
+            60
+        )
+    );
+
+}
+
+
+/* ============================================================
+DIRECTIONAL STRENGTH
+============================================================ */
+
+function calculateDirectionalStrength(
+    candles,
+    windowSize
+) {
+
+    if (
+        !Array.isArray(candles) ||
+        candles.length <
+            windowSize + 1
+    ) {
+
+        return null;
+
+    }
+
+
+    const start =
+        candles.length -
+        windowSize -
+        1;
+
+
+    let upMovement = 0;
+
+    let downMovement = 0;
+
+
+    for (
+        let i = start + 1;
+        i < candles.length;
+        i++
+    ) {
+
+        const previous =
+            candles[i - 1];
+
+        const current =
+            candles[i];
+
+
+        if (
+            !previous ||
+            !current ||
+            !Number.isFinite(
+                previous.close
+            ) ||
+            !Number.isFinite(
+                current.close
+            ) ||
+            previous.close === 0
+        ) {
+
+            continue;
+
+        }
+
+
+        const change =
+            (
+                (
+                    current.close -
+                    previous.close
+                ) /
+                previous.close
+            ) * 100;
+
+
+        if (change > 0) {
+
+            upMovement += change;
+
+        }
+
+
+        if (change < 0) {
+
+            downMovement +=
+                Math.abs(change);
+
+        }
+
+    }
+
+
+    const totalMovement =
+        upMovement +
+        downMovement;
+
+
+    if (
+        totalMovement <= 0
+    ) {
+
+        return {
+
+            direction:
+                "NEUTRAL",
+
+            rawDirection:
+                "NEUTRAL",
+
+            strength:
+                0,
+
+            upMovement:
+                0,
+
+            downMovement:
+                0,
+
+            totalMovement:
+                0
+
+        };
+
+    }
+
+
+    const upStrength =
+        (
+            upMovement /
+            totalMovement
+        ) * 100;
+
+
+    const downStrength =
+        (
+            downMovement /
+            totalMovement
+        ) * 100;
+
+
+    if (
+        upStrength >=
+        downStrength
+    ) {
+
+        return {
+
+            direction:
+                upStrength >=
+                TREND_REQUIRED
+                    ? "LONG"
+                    : "NEUTRAL",
+
+            rawDirection:
+                "LONG",
+
+            strength:
+                upStrength,
+
+            upMovement,
+
+            downMovement,
+
+            totalMovement
+
+        };
+
+    }
+
+
+    return {
+
+        direction:
+            downStrength >=
+            TREND_REQUIRED
+                ? "SHORT"
+                : "NEUTRAL",
+
+        rawDirection:
+            "SHORT",
+
+        strength:
+            downStrength,
+
+        upMovement,
+
+        downMovement,
+
+        totalMovement
+
+    };
+
+}
+
+
+/* ============================================================
+TREND
+============================================================ */
+
+function calculateTrend(candles) {
+
+    const result =
+        calculateDirectionalStrength(
+            candles,
+            TREND_CANDLES
+        );
+
+
+    if (!result) {
+        return null;
+    }
+
+
+    return {
+
+        ...result,
+
+        window:
+            TREND_CANDLES,
+
+        required:
+            TREND_REQUIRED
+
+    };
+
+}
+
+
+/* ============================================================
+ENTRY
+============================================================ */
+
+function calculateEntry(
+    candles,
+    windowSize
+) {
+
+    const result =
+        calculateDirectionalStrength(
+            candles,
+            windowSize
+        );
+
+
+    if (!result) {
+        return null;
+    }
+
+
+    let direction =
+        "NEUTRAL";
+
+
+    if (
+        result.upMovement >
+            result.downMovement &&
+        result.strength >=
+            ENTRY_REQUIRED
+    ) {
+
+        direction =
+            "LONG";
+
+    } else if (
+        result.downMovement >
+            result.upMovement &&
+        result.strength >=
+            ENTRY_REQUIRED
+    ) {
+
+        direction =
+            "SHORT";
+
+    }
+
+
+    return {
+
+        ...result,
+
+        window:
+            windowSize,
+
+        required:
+            ENTRY_REQUIRED,
+
+        direction
+
+    };
+
+}
+
+
+/* ============================================================
+CAVEMAN ENTRY CONFIRMATION
+============================================================ */
+
+function calculateEntryConfirmation(
+    entries,
+    trend
+) {
+
+    if (
+        !trend ||
+        !entries
+    ) {
+
+        return {
+
+            decision:
+                "NEUTRAL",
+
+            longVotes:
+                0,
+
+            shortVotes:
+                0,
+
+            neutralVotes:
+                4,
+
+            confirmed:
+                false,
+
+            rawLongVotes:
+                0,
+
+            rawShortVotes:
+                0
+
+        };
+
+    }
+
+
+    let rawLongVotes = 0;
+
+    let rawShortVotes = 0;
+
+    let neutralVotes = 0;
+
+
+    for (
+        const windowSize of
+        ENTRY_WINDOWS
+    ) {
+
+        const entry =
+            entries[windowSize];
+
+
+        if (!entry) {
+
+            neutralVotes++;
+
+            continue;
+
+        }
+
+
+        if (
+            entry.direction ===
+            "LONG"
+        ) {
+
+            rawLongVotes++;
+
+        } else if (
+            entry.direction ===
+            "SHORT"
+        ) {
+
+            rawShortVotes++;
+
+        } else {
+
+            neutralVotes++;
+
+        }
+
+    }
+
+
+    let decision =
+        "NEUTRAL";
+
+
+    let longVotes = 0;
+
+    let shortVotes = 0;
+
+
+    /*
+        ========================================================
+        CAVEMAN PULLBACK LOGIC
+        ========================================================
+
+        LONG TREND:
+
+            RAW SHORT votes
+            are the pullback.
+
+            3 of 4 SHORT
+                =
+            FINAL LONG
+
+
+        SHORT TREND:
+
+            RAW LONG votes
+            are the pullback.
+
+            3 of 4 LONG
+                =
+            FINAL SHORT
+
+        IMPORTANT:
+
+        We do NOT flip the entry UI.
+
+        The flip happens here,
+        in the final decision.
+    */
+
+
+    if (
+        trend.direction ===
+        "LONG"
+    ) {
+
+        longVotes =
+            rawShortVotes;
+
+        shortVotes =
+            rawLongVotes;
+
+
+        if (
+            rawShortVotes >=
+            ENTRY_CONFIRMATIONS_REQUIRED
+        ) {
+
+            decision =
+                "LONG";
+
+        }
+
+    } else if (
+        trend.direction ===
+        "SHORT"
+    ) {
+
+        /*
+            THIS IS THE IMPORTANT SHORT FIX.
+
+            SHORT trend + 3 LONG raw entries
+                =
+            SHORT final decision.
+        */
+
+        shortVotes =
+            rawLongVotes;
+
+        longVotes =
+            rawShortVotes;
+
+
+        if (
+            rawLongVotes >=
+            ENTRY_CONFIRMATIONS_REQUIRED
+        ) {
+
+            decision =
+                "SHORT";
+
+        }
+
+    }
+
+
+    return {
+
+        decision,
+
+        longVotes,
+
+        shortVotes,
+
+        neutralVotes,
+
+        confirmed:
+            decision !== "NEUTRAL",
+
+        rawLongVotes,
+
+        rawShortVotes
+
+    };
+
+}
+
+
+/* ============================================================
+BUILD SIGNAL SNAPSHOT
+============================================================ */
+
+function calculateSignalSnapshot(
+    candles
+) {
+
+    const trend =
+        calculateTrend(
             candles
         );
 
 
-        priceChart
-            .timeScale()
-            .fitContent();
+    const entries = {};
 
 
-        updateCurrentPrice(
-            lastCandle.close
-        );
+    for (
+        const windowSize of
+        ENTRY_WINDOWS
+    ) {
 
-
-        // ====================================================
-        // DELTA
-        // ====================================================
-
-        const deltaData =
-            calculateDelta(
-                data
+        entries[windowSize] =
+            calculateEntry(
+                candles,
+                windowSize
             );
 
+    }
 
-        deltaSeries.setData(
-            deltaData
+
+    const confirmation =
+        calculateEntryConfirmation(
+            entries,
+            trend
         );
 
 
-        // ====================================================
-        // CUMULATIVE DELTA
-        // ====================================================
-
-        const cumulativeData =
-            calculateCumulativeDelta(
-                deltaData
-            );
+    let decision =
+        confirmation.decision;
 
 
-        cumulativeDeltaSeries.setData(
-            cumulativeData
-        );
+    let reason =
+        "WAITING";
 
 
-        // ====================================================
-        // ALIGN ALL CHARTS
-        // ====================================================
+    if (!trend) {
 
-        const visibleRange =
-            priceChart
-                .timeScale()
-                .getVisibleLogicalRange();
+        reason =
+            "NOT_ENOUGH_200_CANDLES";
 
+        decision =
+            "NEUTRAL";
+
+    } else if (
+        trend.direction ===
+        "NEUTRAL"
+    ) {
+
+        reason =
+            `TREND_BELOW_${TREND_REQUIRED}%`;
+
+        decision =
+            "NEUTRAL";
+
+    } else if (
+        confirmation.confirmed
+    ) {
+
+        /*
+            FINAL DECISION IS ALREADY
+            CORRECTLY FLIPPED.
+
+            LONG trend + 3 SHORT
+                =
+            LONG
+
+            SHORT trend + 3 LONG
+                =
+            SHORT
+        */
 
         if (
-            visibleRange
+            trend.direction ===
+            "LONG"
         ) {
 
-            if (
-                deltaChart
-            ) {
+            reason =
+                `LONG_TREND_${trend.strength.toFixed(2)}_PULLBACK_3_OF_4_SHORT`;
 
-                deltaChart
-                    .timeScale()
-                    .setVisibleLogicalRange(
-                        visibleRange
-                    );
+        } else {
 
+            reason =
+                `SHORT_TREND_${trend.strength.toFixed(2)}_PULLBACK_3_OF_4_LONG`;
+
+        }
+
+    } else {
+
+        reason =
+            `${trend.direction}_TREND_PULLBACK_NOT_CONFIRMED`;
+
+        decision =
+            "NEUTRAL";
+
+    }
+
+
+    const candle =
+        candles[
+            candles.length - 1
+        ];
+
+
+    return {
+
+        timestamp:
+            new Date().toISOString(),
+
+        candleTime:
+            candle?.time
+                ? candle.time * 1000
+                : Date.now(),
+
+        symbol:
+            currentSymbol,
+
+        timeframe:
+            currentTimeframe,
+
+        trend,
+
+        entries,
+
+        confirmation,
+
+        decision,
+
+        reason,
+
+        price:
+            candle?.close ?? null
+
+    };
+
+}
+
+
+/* ============================================================
+UPDATE TREND UI
+============================================================ */
+
+function updateTrendUI(trend) {
+
+    if (!trend) {
+
+        setText(
+            "trendDirection",
+            "--"
+        );
+
+        setText(
+            "trendStrength",
+            "--"
+        );
+
+        setText(
+            "trendLongMovement",
+            "--"
+        );
+
+        setText(
+            "trendShortMovement",
+            "--"
+        );
+
+        setText(
+            "trendMessage",
+            "Waiting for 200 candles..."
+        );
+
+        return;
+
+    }
+
+
+    const direction =
+        trend.direction;
+
+
+    const directionEl =
+        element(
+            "trendDirection"
+        );
+
+
+    if (directionEl) {
+
+        directionEl.textContent =
+            direction;
+
+        directionEl.className =
+            `big-direction ${directionClass(
+                direction
+            )}`;
+
+    }
+
+
+    setText(
+        "trendStrength",
+        formatPercent(
+            trend.strength
+        )
+    );
+
+
+    setText(
+        "trendLongMovement",
+        formatPercent(
+            trend.upMovement
+        )
+    );
+
+
+    setText(
+        "trendShortMovement",
+        formatPercent(
+            trend.downMovement
+        )
+    );
+
+
+    const badge =
+        element(
+            "trendBadge"
+        );
+
+
+    if (badge) {
+
+        badge.textContent =
+            direction === "NEUTRAL"
+                ? `BELOW ${TREND_REQUIRED}%`
+                : direction;
+
+        badge.className =
+            `signal-badge ${directionClass(
+                direction
+            )}`;
+
+    }
+
+
+    const bar =
+        element(
+            "trendStrengthBar"
+        );
+
+
+    if (bar) {
+
+        bar.style.width =
+            `${Math.min(
+                100,
+                Math.max(
+                    0,
+                    trend.strength
+                )
+            )}%`;
+
+        bar.className =
+            `strength-fill ${directionClass(
+                direction
+            )}`;
+
+    }
+
+
+    if (
+        direction ===
+        "LONG"
+    ) {
+
+        setText(
+            "trendMessage",
+            `LONG trend confirmed at ${trend.strength.toFixed(2)}%. Looking for SHORT pullback signals.`
+        );
+
+    } else if (
+        direction ===
+        "SHORT"
+    ) {
+
+        setText(
+            "trendMessage",
+            `SHORT trend confirmed at ${trend.strength.toFixed(2)}%. Looking for LONG pullback signals.`
+        );
+
+    } else {
+
+        setText(
+            "trendMessage",
+            `No trend confirmation. Strongest direction is ${trend.strength.toFixed(2)}%, below the required ${TREND_REQUIRED}%.`
+        );
+
+    }
+
+}
+
+
+/* ============================================================
+UPDATE ENTRY UI
+============================================================ */
+
+function updateEntryUI(
+    entries,
+    confirmation,
+    trend
+) {
+
+    for (
+        const windowSize of
+        ENTRY_WINDOWS
+    ) {
+
+        const entry =
+            entries[windowSize];
+
+
+        const card =
+            element(
+                `entryCard${windowSize}`
+            );
+
+
+        const direction =
+            element(
+                `entryDirection${windowSize}`
+            );
+
+
+        const strength =
+            element(
+                `entryStrength${windowSize}`
+            );
+
+
+        const up =
+            element(
+                `entryUp${windowSize}`
+            );
+
+
+        const down =
+            element(
+                `entryDown${windowSize}`
+            );
+
+
+        const status =
+            element(
+                `entryStatus${windowSize}`
+            );
+
+
+        if (!entry) {
+
+            if (direction) {
+                direction.textContent =
+                    "--";
             }
 
+            if (strength) {
+                strength.textContent =
+                    "--";
+            }
+
+            if (up) {
+                up.textContent =
+                    "--";
+            }
+
+            if (down) {
+                down.textContent =
+                    "--";
+            }
+
+            if (status) {
+                status.textContent =
+                    "Waiting";
+            }
+
+            continue;
+
+        }
+
+
+        /*
+            IMPORTANT:
+
+            Show the REAL raw entry direction.
+
+            Do NOT flip the displayed entry.
+
+            The pullback conversion happens
+            only in calculateEntryConfirmation().
+        */
+
+        if (direction) {
+
+            direction.textContent =
+                entry.direction;
+
+            direction.className =
+                `entry-direction ${directionClass(
+                    entry.direction
+                )}`;
+
+        }
+
+
+        if (strength) {
+
+            strength.textContent =
+                formatPercent(
+                    entry.strength
+                );
+
+        }
+
+
+        if (up) {
+
+            up.textContent =
+                formatPercent(
+                    entry.upMovement
+                );
+
+        }
+
+
+        if (down) {
+
+            down.textContent =
+                formatPercent(
+                    entry.downMovement
+                );
+
+        }
+
+
+        if (card) {
+
+            card.className =
+                `entry-card ${directionClass(
+                    entry.direction
+                )}`;
+
+        }
+
+
+        if (status) {
 
             if (
-                cumulativeDeltaChart
+                entry.direction ===
+                "NEUTRAL"
             ) {
 
-                cumulativeDeltaChart
-                    .timeScale()
-                    .setVisibleLogicalRange(
-                        visibleRange
-                    );
+                status.textContent =
+                    `Below ${ENTRY_REQUIRED}%`;
+
+            } else if (
+                trend &&
+                trend.direction ===
+                    "LONG" &&
+                entry.direction ===
+                    "SHORT"
+            ) {
+
+                status.textContent =
+                    "PULLBACK FOR LONG";
+
+            } else if (
+                trend &&
+                trend.direction ===
+                    "SHORT" &&
+                entry.direction ===
+                    "LONG"
+            ) {
+
+                status.textContent =
+                    "PULLBACK FOR SHORT";
+
+            } else {
+
+                status.textContent =
+                    "NOT PULLBACK";
 
             }
 
         }
 
+    }
 
-        // ====================================================
-        // VALUES
-        // ====================================================
 
-        updateDeltaValue(
-            deltaData
+    const confirmationBadge =
+        element(
+            "entryConfirmationBadge"
         );
 
 
-        updateCumulativeDeltaValue(
-            cumulativeData
+    if (confirmationBadge) {
+
+        if (
+            confirmation.confirmed
+        ) {
+
+            confirmationBadge.textContent =
+                `${confirmation.decision} ${Math.max(
+                    confirmation.longVotes,
+                    confirmation.shortVotes
+                )}/4`;
+
+            confirmationBadge.className =
+                `signal-badge ${
+                    directionClass(
+                        confirmation.decision
+                    )
+                }`;
+
+        } else {
+
+            let pullbackVotes = 0;
+
+
+            if (
+                trend?.direction ===
+                "LONG"
+            ) {
+
+                pullbackVotes =
+                    confirmation.rawShortVotes;
+
+            } else if (
+                trend?.direction ===
+                "SHORT"
+            ) {
+
+                pullbackVotes =
+                    confirmation.rawLongVotes;
+
+            }
+
+
+            confirmationBadge.textContent =
+                `${pullbackVotes}/4`;
+
+            confirmationBadge.className =
+                "signal-badge neutral";
+
+        }
+
+    }
+
+}
+
+
+/* ============================================================
+UPDATE FINAL DECISION
+============================================================ */
+
+function updateFinalDecisionUI(
+    snapshot
+) {
+
+    const card =
+        element(
+            "finalDecisionCard"
         );
 
 
-        setMarketStatus(
-            "LIVE DATA"
+    const decision =
+        element(
+            "finalDecision"
         );
 
 
-    } catch (
-        error
+    if (
+        !card ||
+        !decision
     ) {
 
+        return;
+
+    }
+
+
+    card.className =
+        `decision-card ${directionClass(
+            snapshot.decision
+        )}`;
+
+
+    decision.textContent =
+        snapshot.decision;
+
+
+    setText(
+        "decisionReason",
+        snapshot.reason
+    );
+
+}
+
+
+/* ============================================================
+ADD TO CURRENT CYCLE
+============================================================ */
+
+function addToCurrentCycle(
+    snapshot
+) {
+
+    /*
+        Prevent duplicate processing
+        of the same candle.
+    */
+
+    const last =
+        currentCycle[
+            currentCycle.length - 1
+        ];
+
+
+    if (
+        last &&
+        last.candleTime ===
+            snapshot.candleTime
+    ) {
+
+        return false;
+
+    }
+
+
+    currentCycle.push(
+        snapshot
+    );
+
+
+    /*
+        Add immediate final signal marker.
+
+        Only LONG / SHORT.
+    */
+
+    if (
+        snapshot.decision ===
+            "LONG" ||
+        snapshot.decision ===
+            "SHORT"
+    ) {
+
+        addSignalMarker(
+            snapshot
+        );
+
+    }
+
+
+    /*
+        Keep the current cycle
+        at maximum CYCLE_LENGTH.
+    */
+
+    if (
+        currentCycle.length >
+        CYCLE_LENGTH
+    ) {
+
+        currentCycle =
+            currentCycle.slice(
+                -CYCLE_LENGTH
+            );
+
+    }
+
+
+    return true;
+
+}
+
+
+/* ============================================================
+CYCLE DECISION
+============================================================ */
+
+function calculateCycleDecision(
+    snapshots
+) {
+
+    let longVotes = 0;
+
+    let shortVotes = 0;
+
+    let neutralVotes = 0;
+
+
+    for (
+        const snapshot of
+        snapshots
+    ) {
+
+        if (
+            snapshot.decision ===
+            "LONG"
+        ) {
+
+            longVotes++;
+
+        } else if (
+            snapshot.decision ===
+            "SHORT"
+        ) {
+
+            shortVotes++;
+
+        } else {
+
+            neutralVotes++;
+
+        }
+
+    }
+
+
+    let decision =
+        "NEUTRAL";
+
+
+    /*
+        10-minute cycle:
+
+        6 / 10 or more
+        = directional.
+
+        Otherwise:
+        NEUTRAL.
+    */
+
+    if (
+        longVotes >
+            shortVotes &&
+        longVotes >= 6
+    ) {
+
+        decision =
+            "LONG";
+
+    } else if (
+        shortVotes >
+            longVotes &&
+        shortVotes >= 6
+    ) {
+
+        decision =
+            "SHORT";
+
+    }
+
+
+    const last =
+        snapshots[
+            snapshots.length - 1
+        ];
+
+
+    return {
+
+        decision,
+
+        longVotes,
+
+        shortVotes,
+
+        neutralVotes,
+
+        trend:
+            last?.trend || null,
+
+        entries:
+            last?.entries || {},
+
+        finalSnapshot:
+            last || null
+
+    };
+
+}
+
+
+/* ============================================================
+BUILD CYCLE REASON
+============================================================ */
+
+/*
+    IMPORTANT FIX:
+
+    Previously the cycle reason was copied from
+    the LAST snapshot:
+
+        cycleDecision.finalSnapshot.reason
+
+    That can create a misleading row.
+
+    Example:
+
+        9 LONG
+        1 NEUTRAL
+
+    Cycle decision:
+        LONG
+
+    But if the final snapshot was neutral,
+    the old reason could say:
+
+        SHORT_TREND_PULLBACK_NOT_CONFIRMED
+
+    That makes the table look broken.
+
+    Now the cycle reason describes the
+    ACTUAL completed cycle.
+*/
+
+function buildCycleReason(
+    cycleDecision
+) {
+
+    if (!cycleDecision) {
+        return "CYCLE_COMPLETE";
+    }
+
+
+    const longVotes =
+        cycleDecision.longVotes;
+
+
+    const shortVotes =
+        cycleDecision.shortVotes;
+
+
+    const neutralVotes =
+        cycleDecision.neutralVotes;
+
+
+    if (
+        cycleDecision.decision ===
+        "LONG"
+    ) {
+
+        return (
+            `CYCLE_LONG_${longVotes}_OF_${CYCLE_LENGTH}`
+        );
+
+    }
+
+
+    if (
+        cycleDecision.decision ===
+        "SHORT"
+    ) {
+
+        return (
+            `CYCLE_SHORT_${shortVotes}_OF_${CYCLE_LENGTH}`
+        );
+
+    }
+
+
+    return (
+        `CYCLE_NEUTRAL_${longVotes}L_${shortVotes}S_${neutralVotes}N`
+    );
+
+}
+
+
+/* ============================================================
+COMPLETE CYCLE
+============================================================ */
+
+function completeCycle() {
+
+    if (
+        currentCycle.length <
+        CYCLE_LENGTH
+    ) {
+
+        return;
+
+    }
+
+
+    const first =
+        currentCycle[0];
+
+
+    const last =
+        currentCycle[
+            currentCycle.length - 1
+        ];
+
+
+    const cycleDecision =
+        calculateCycleDecision(
+            currentCycle
+        );
+
+
+    const cycle = {
+
+        cycleId:
+            cycleHistory.length + 1,
+
+        symbol:
+            currentSymbol,
+
+        timeframe:
+            currentTimeframe,
+
+        startTime:
+            first.timestamp,
+
+        endTime:
+            last.timestamp,
+
+        /*
+            Exact candle timestamp.
+
+            Used for the cycle marker.
+        */
+
+        endCandleTime:
+            last.candleTime,
+
+        completedAt:
+            new Date().toISOString(),
+
+        candles:
+            currentCycle.length,
+
+        trend:
+            cycleDecision.trend,
+
+        entries:
+            cycleDecision.entries,
+
+        votes: {
+
+            long:
+                cycleDecision.longVotes,
+
+            short:
+                cycleDecision.shortVotes,
+
+            neutral:
+                cycleDecision.neutralVotes
+
+        },
+
+        decision:
+            cycleDecision.decision,
+
+        /*
+            FIXED:
+
+            This now describes the completed
+            cycle itself.
+
+            It no longer copies the last
+            snapshot's reason.
+        */
+
+        reason:
+            buildCycleReason(
+                cycleDecision
+            )
+
+    };
+
+
+    cycleHistory.unshift(
+        cycle
+    );
+
+
+    if (
+        cycleHistory.length >
+        HISTORY_LIMIT
+    ) {
+
+        cycleHistory =
+            cycleHistory.slice(
+                0,
+                HISTORY_LIMIT
+            );
+
+    }
+
+
+    /*
+        Add large completed-cycle marker.
+
+        Individual signal:
+            smaller arrow
+
+        Completed cycle:
+            larger arrow
+            with CYCLE LONG / CYCLE SHORT
+    */
+
+    addCycleMarker(
+        cycle
+    );
+
+
+    /*
+        Start a completely fresh
+        10-minute cycle.
+    */
+
+    currentCycle = [];
+
+
+    renderPreviousCycleHistory();
+
+}
+
+
+/* ============================================================
+CURRENT CYCLE TABLE
+============================================================ */
+
+function renderCurrentCycle() {
+
+    const tbody =
+        element(
+            "currentCycleTable"
+        );
+
+
+    if (!tbody) {
+        return;
+    }
+
+
+    if (!currentCycle.length) {
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="empty-table">
+                    Waiting for first 1-minute calculation...
+                </td>
+            </tr>
+        `;
+
+        return;
+
+    }
+
+
+    tbody.innerHTML =
+        currentCycle
+            .slice()
+            .reverse()
+            .map(
+                snapshot => {
+
+                    const trend =
+                        snapshot.trend;
+
+
+                    const entry15 =
+                        snapshot.entries[15];
+
+
+                    const entry20 =
+                        snapshot.entries[20];
+
+
+                    const entry30 =
+                        snapshot.entries[30];
+
+
+                    const entry60 =
+                        snapshot.entries[60];
+
+
+                    return `
+                        <tr>
+
+                            <td>
+                                ${escapeHtml(
+                                    formatTime(
+                                        snapshot.timestamp
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    snapshot.symbol
+                                )}
+                            </td>
+
+                            <td class="${
+                                directionClass(
+                                    trend?.direction
+                                ) === "long"
+                                    ? "table-long"
+                                    : directionClass(
+                                        trend?.direction
+                                    ) === "short"
+                                        ? "table-short"
+                                        : "table-neutral"
+                            }">
+
+                                ${
+                                    trend
+                                        ? `${trend.direction} ${trend.strength.toFixed(2)}%`
+                                        : "--"
+                                }
+
+                            </td>
+
+                            <td class="${tableDirectionClass(
+                                entry15?.direction
+                            )}">
+                                ${
+                                    entry15
+                                        ? `${entry15.direction} ${entry15.strength.toFixed(2)}%`
+                                        : "--"
+                                }
+                            </td>
+
+                            <td class="${tableDirectionClass(
+                                entry20?.direction
+                            )}">
+                                ${
+                                    entry20
+                                        ? `${entry20.direction} ${entry20.strength.toFixed(2)}%`
+                                        : "--"
+                                }
+                            </td>
+
+                            <td class="${tableDirectionClass(
+                                entry30?.direction
+                            )}">
+                                ${
+                                    entry30
+                                        ? `${entry30.direction} ${entry30.strength.toFixed(2)}%`
+                                        : "--"
+                                }
+                            </td>
+
+                            <td class="${tableDirectionClass(
+                                entry60?.direction
+                            )}">
+                                ${
+                                    entry60
+                                        ? `${entry60.direction} ${entry60.strength.toFixed(2)}%`
+                                        : "--"
+                                }
+                            </td>
+
+                            <td class="${tableDirectionClass(
+                                snapshot.decision
+                            )}">
+                                ${escapeHtml(
+                                    snapshot.decision
+                                )}
+                            </td>
+
+                        </tr>
+                    `;
+
+                }
+            )
+            .join("");
+
+}
+
+
+/* ============================================================
+TABLE DIRECTION CLASS
+============================================================ */
+
+function tableDirectionClass(
+    direction
+) {
+
+    if (
+        direction ===
+        "LONG"
+    ) {
+
+        return "table-long";
+
+    }
+
+
+    if (
+        direction ===
+        "SHORT"
+    ) {
+
+        return "table-short";
+
+    }
+
+
+    return "table-neutral";
+
+}
+
+
+/* ============================================================
+PREVIOUS CYCLE TABLE
+============================================================ */
+
+function renderPreviousCycleHistory() {
+
+    const tbody =
+        element(
+            "previousCycleTable"
+        );
+
+
+    if (!tbody) {
+        return;
+    }
+
+
+    setText(
+        "completedCycleCount",
+        `${cycleHistory.length} cycle${
+            cycleHistory.length === 1
+                ? ""
+                : "s"
+        }`
+    );
+
+
+    if (!cycleHistory.length) {
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="empty-table">
+                    No completed cycles yet.
+                </td>
+            </tr>
+        `;
+
+        return;
+
+    }
+
+
+    tbody.innerHTML =
+        cycleHistory
+            .map(
+                cycle => {
+
+                    const trend =
+                        cycle.trend;
+
+
+                    const votes =
+                        `${cycle.votes.long}L / ${cycle.votes.short}S / ${cycle.votes.neutral}N`;
+
+
+                    return `
+                        <tr>
+
+                            <td>
+                                ${escapeHtml(
+                                    formatTime(
+                                        cycle.completedAt
+                                    )
+                                )}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    cycle.symbol
+                                )}
+                            </td>
+
+                            <td class="${tableDirectionClass(
+                                trend?.direction
+                            )}">
+                                ${
+                                    trend
+                                        ? `${trend.direction} ${trend.strength.toFixed(2)}%`
+                                        : "--"
+                                }
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    votes
+                                )}
+                            </td>
+
+                            <td class="${tableDirectionClass(
+                                cycle.decision
+                            )}">
+                                ${escapeHtml(
+                                    cycle.decision
+                                )}
+                            </td>
+
+                            <td class="reason">
+                                ${escapeHtml(
+                                    cycle.reason
+                                )}
+                            </td>
+
+                        </tr>
+                    `;
+
+                }
+            )
+            .join("");
+
+}
+
+
+/* ============================================================
+CYCLE UI
+============================================================ */
+
+function updateCycleUI() {
+
+    setText(
+        "cycleProgress",
+        `${currentCycle.length} / ${CYCLE_LENGTH}`
+    );
+
+
+    setText(
+        "cycleHistoryCount",
+        `${currentCycle.length} / ${CYCLE_LENGTH}`
+    );
+
+
+    if (
+        currentCycle.length ===
+        0
+    ) {
+
+        setText(
+            "cycleStatus",
+            "Waiting"
+        );
+
+    } else if (
+        currentCycle.length <
+        CYCLE_LENGTH
+    ) {
+
+        const remaining =
+            CYCLE_LENGTH -
+            currentCycle.length;
+
+
+        setText(
+            "cycleStatus",
+            `${remaining} minute${
+                remaining === 1
+                    ? ""
+                    : "s"
+            } remaining`
+        );
+
+    } else {
+
+        setText(
+            "cycleStatus",
+            "Completing cycle..."
+        );
+
+    }
+
+}
+
+
+/* ============================================================
+PROCESS ONE NEW MARKET UPDATE
+============================================================ */
+
+function processMarketUpdate(
+    candles
+) {
+
+    currentCandles =
+        candles;
+
+
+    /*
+        Update actual chart data first.
+    */
+
+    updatePriceChart(
+        candles
+    );
+
+
+    /*
+        Update price movement cards.
+    */
+
+    updatePriceMovement(
+        candles
+    );
+
+
+    /*
+        Calculate one complete
+        one-minute signal snapshot.
+    */
+
+    const snapshot =
+        calculateSignalSnapshot(
+            candles
+        );
+
+
+    /*
+        Update trend.
+    */
+
+    updateTrendUI(
+        snapshot.trend
+    );
+
+
+    /*
+        Update 15 / 20 / 30 / 60 entries.
+    */
+
+    updateEntryUI(
+        snapshot.entries,
+        snapshot.confirmation,
+        snapshot.trend
+    );
+
+
+    /*
+        Update current final decision.
+    */
+
+    updateFinalDecisionUI(
+        snapshot
+    );
+
+
+    /*
+        Add exactly one calculation
+        for the current candle.
+    */
+
+    const added =
+        addToCurrentCycle(
+            snapshot
+        );
+
+
+    /*
+        When 10 unique one-minute
+        snapshots exist, complete cycle.
+    */
+
+    if (added) {
+
+        if (
+            currentCycle.length >=
+            CYCLE_LENGTH
+        ) {
+
+            completeCycle();
+
+        }
+
+    }
+
+
+    /*
+        Update cycle UI.
+    */
+
+    updateCycleUI();
+
+
+    renderCurrentCycle();
+
+
+    /*
+        Rebuild markers after everything.
+
+        This guarantees:
+
+        - current signals
+        - completed cycle markers
+        - candle refreshes
+
+        are all represented correctly.
+    */
+
+    rebuildSignalMarkers();
+
+
+    /*
+        Explicit Berlin time.
+    */
+
+    setText(
+        "lastUpdate",
+        formatTime(
+            snapshot.timestamp
+        )
+    );
+
+
+    setConnection(
+        true
+    );
+
+}
+
+
+/* ============================================================
+LOAD MARKET
+============================================================ */
+
+async function loadMarket() {
+
+    if (loading) {
+        return;
+    }
+
+
+    loading = true;
+
+
+    const button =
+        element(
+            "loadButton"
+        );
+
+
+    if (button) {
+
+        button.disabled =
+            true;
+
+        button.textContent =
+            "Loading...";
+
+    }
+
+
+    try {
+
+        const symbolInput =
+            element(
+                "symbol"
+            );
+
+
+        const timeframeInput =
+            element(
+                "timeframe"
+            );
+
+
+        currentSymbol =
+            (
+                symbolInput?.value ||
+                "POLUSDT"
+            )
+                .trim()
+                .toUpperCase();
+
+
+        currentTimeframe =
+            timeframeInput?.value ||
+            "1m";
+
+
+        if (!currentSymbol) {
+
+            throw new Error(
+                "Symbol is required."
+            );
+
+        }
+
+
+        /*
+            Fetch first.
+
+            We only reset the cycle/markers
+            after we know the market loaded.
+        */
+
+        const candles =
+            await fetchCandles();
+
+
+        if (
+            candles.length <
+            TREND_CANDLES + 1
+        ) {
+
+            throw new Error(
+                `Need at least ${TREND_CANDLES + 1} candles. WEEX returned ${candles.length}.`
+            );
+
+        }
+
+
+        /*
+            New market load means:
+
+            fresh 10-minute experimental cycle.
+        */
+
+        currentCycle = [];
+
+
+        /*
+            Clear old markers.
+
+            This prevents markers from
+            another symbol appearing on
+            the new chart.
+        */
+
+        clearSignalMarkers();
+
+
+        /*
+            Load actual market data.
+        */
+
+        processMarketUpdate(
+            candles
+        );
+
+
+        /*
+            Start the one-minute timer.
+        */
+
+        scheduleNextRefresh();
+
+
+    } catch (error) {
+
         console.error(
-            "WEEX CANDLE ERROR:",
+            "PRICE LAB ERROR:",
             error
         );
 
 
-        setMarketStatus(
-            "ERROR"
+        setConnection(
+            false
         );
 
 
-        const priceElement =
-            document.getElementById(
-                "currentPrice"
-            );
+        setText(
+            "trendMessage",
+            error.message ||
+            "Failed to load market."
+        );
 
 
-        if (
-            priceElement
-        ) {
+    } finally {
 
-            priceElement.textContent =
-                "ERROR";
-
-        }
+        loading = false;
 
 
-        const deltaElement =
-            document.getElementById(
-                "deltaValue"
-            );
+        if (button) {
 
+            button.disabled =
+                false;
 
-        if (
-            deltaElement
-        ) {
-
-            deltaElement.textContent =
-                "ERROR";
-
-        }
-
-
-        const cumulativeElement =
-            document.getElementById(
-                "cumulativeDeltaValue"
-            );
-
-
-        if (
-            cumulativeElement
-        ) {
-
-            cumulativeElement.textContent =
-                "ERROR";
+            button.textContent =
+                "Load Market";
 
         }
 
@@ -1056,947 +3870,263 @@ async function loadWEEXCandles() {
 }
 
 
-// ============================================================
-// CONVERT WEEX CANDLES
-// ============================================================
+/* ============================================================
+1-MINUTE REFRESH SCHEDULER
+============================================================ */
 
-function convertWEEXCandles(
-    data
-) {
+function scheduleNextRefresh() {
 
-    if (
-        !Array.isArray(data)
-    ) {
+    if (refreshTimer) {
 
-        throw new Error(
-            "Invalid WEEX kline response."
+        clearTimeout(
+            refreshTimer
         );
+
+        refreshTimer =
+            null;
 
     }
 
 
-    const candles =
-        data
-            .map(
-                (
-                    candle
-                ) => {
-
-                    if (
-                        !Array.isArray(
-                            candle
-                        ) ||
-                        candle.length < 5
-                    ) {
-
-                        return null;
-
-                    }
+    const now =
+        new Date();
 
 
-                    const time =
-                        Number(
-                            candle[0]
-                        );
+    /*
+        Next exact minute boundary.
+    */
+
+    const nextMinute =
+        new Date(
+            now.getTime()
+        );
 
 
-                    const open =
-                        Number(
-                            candle[1]
-                        );
+    nextMinute.setSeconds(
+        0,
+        0
+    );
 
 
-                    const high =
-                        Number(
-                            candle[2]
-                        );
+    nextMinute.setMinutes(
+        nextMinute.getMinutes() +
+        1
+    );
 
 
-                    const low =
-                        Number(
-                            candle[3]
-                        );
+    /*
+        Add a small buffer.
+
+        Example:
+
+        07:20:00
+        candle closes/updates
+
+        Wait until:
+
+        07:21:01.200
+    */
+
+    const delay =
+        Math.max(
+            1000,
+            nextMinute.getTime() -
+                now.getTime() +
+                REFRESH_BUFFER_MS
+        );
 
 
-                    const close =
-                        Number(
-                            candle[4]
-                        );
+    refreshTimer =
+        setTimeout(
+            async () => {
+
+                await refreshMarket();
+
+                scheduleNextRefresh();
+
+            },
+            delay
+        );
+
+}
 
 
-                    if (
-                        !Number.isFinite(
-                            time
-                        ) ||
-                        !Number.isFinite(
-                            open
-                        ) ||
-                        !Number.isFinite(
-                            high
-                        ) ||
-                        !Number.isFinite(
-                            low
-                        ) ||
-                        !Number.isFinite(
-                            close
-                        )
-                    ) {
+/* ============================================================
+REFRESH MARKET
+============================================================ */
 
-                        return null;
+async function refreshMarket() {
 
-                    }
+    if (loading) {
+        return;
+    }
 
 
-                    return {
+    try {
 
-                        time:
-                            Math.floor(
-                                time / 1000
-                            ),
+        loading = true;
 
-                        open:
-                            open,
 
-                        high:
-                            high,
+        const candles =
+            await fetchCandles();
 
-                        low:
-                            low,
 
-                        close:
-                            close
+        if (
+            candles.length <
+            TREND_CANDLES + 1
+        ) {
 
-                    };
+            throw new Error(
+                `Not enough candles: ${candles.length}`
+            );
+
+        }
+
+
+        processMarketUpdate(
+            candles
+        );
+
+
+    } catch (error) {
+
+        console.error(
+            "1-MINUTE UPDATE ERROR:",
+            error
+        );
+
+
+        setConnection(
+            false
+        );
+
+
+        setText(
+            "trendMessage",
+            error.message ||
+            "1-minute update failed."
+        );
+
+
+    } finally {
+
+        loading = false;
+
+    }
+
+}
+
+
+/* ============================================================
+RESIZE
+============================================================ */
+
+function handleResize() {
+
+    const container =
+        element(
+            "priceChart"
+        );
+
+
+    if (
+        !container ||
+        !priceChart
+    ) {
+
+        return;
+
+    }
+
+
+    priceChart.resize(
+        container.clientWidth,
+        container.clientHeight
+    );
+
+}
+
+
+/* ============================================================
+EVENTS
+============================================================ */
+
+function setupEvents() {
+
+    element("symbol")
+        ?.addEventListener(
+            "keydown",
+            event => {
+
+                if (
+                    event.key ===
+                    "Enter"
+                ) {
+
+                    loadMarket();
 
                 }
-            )
-            .filter(
-                Boolean
-            )
-            .sort(
-                (
-                    a,
-                    b
-                ) =>
-                    a.time -
-                    b.time
-            );
-
-
-    // ========================================================
-    // REMOVE DUPLICATE CANDLE TIMESTAMPS
-    // ========================================================
-
-    const uniqueCandles =
-        [];
-
-
-    for (
-        const candle of candles
-    ) {
-
-        const previous =
-            uniqueCandles[
-                uniqueCandles.length - 1
-            ];
-
-
-        if (
-            previous &&
-            previous.time ===
-                candle.time
-        ) {
-
-            continue;
-
-        }
-
-
-        uniqueCandles.push(
-            candle
-        );
-
-    }
-
-
-    return uniqueCandles;
-
-}
-
-
-// ============================================================
-// ESTIMATED DELTA
-// ============================================================
-//
-// WEEX:
-//
-// candle[5]
-//     TOTAL VOLUME
-//
-// candle[9]
-//     TAKER BUY VOLUME
-//
-// Estimated sell volume:
-//
-// total - takerBuy
-//
-// Estimated delta:
-//
-// takerBuy - sell
-//
-// Therefore:
-//
-// delta =
-// (2 * takerBuy) - total
-//
-// IMPORTANT:
-//
-// This is KLINE-BASED ESTIMATED DELTA.
-//
-// It is NOT trade-by-trade exchange Delta.
-// ============================================================
-
-function calculateDelta(
-    data
-) {
-
-    if (
-        !Array.isArray(data)
-    ) {
-
-        return [];
-
-    }
-
-
-    const deltaData =
-        data
-            .map(
-                (
-                    candle
-                ) => {
-
-                    if (
-                        !Array.isArray(
-                            candle
-                        ) ||
-                        candle.length < 10
-                    ) {
-
-                        return null;
-
-                    }
-
-
-                    const time =
-                        Number(
-                            candle[0]
-                        );
-
-
-                    const totalVolume =
-                        Number(
-                            candle[5]
-                        );
-
-
-                    const takerBuyVolume =
-                        Number(
-                            candle[9]
-                        );
-
-
-                    if (
-                        !Number.isFinite(
-                            time
-                        ) ||
-                        !Number.isFinite(
-                            totalVolume
-                        ) ||
-                        !Number.isFinite(
-                            takerBuyVolume
-                        )
-                    ) {
-
-                        return null;
-
-                    }
-
-
-                    const delta =
-                        (
-                            2 *
-                            takerBuyVolume
-                        ) -
-                        totalVolume;
-
-
-                    return {
-
-                        time:
-                            Math.floor(
-                                time / 1000
-                            ),
-
-                        value:
-                            delta,
-
-                        color:
-                            delta >= 0
-                                ? "#21d38a"
-                                : "#ff5268"
-
-                    };
-
-                }
-            )
-            .filter(
-                Boolean
-            )
-            .sort(
-                (
-                    a,
-                    b
-                ) =>
-                    a.time -
-                    b.time
-            );
-
-
-    // ========================================================
-    // REMOVE DUPLICATES
-    // ========================================================
-
-    const uniqueDelta =
-        [];
-
-
-    for (
-        const item of deltaData
-    ) {
-
-        const previous =
-            uniqueDelta[
-                uniqueDelta.length - 1
-            ];
-
-
-        if (
-            previous &&
-            previous.time ===
-                item.time
-        ) {
-
-            continue;
-
-        }
-
-
-        uniqueDelta.push(
-            item
-        );
-
-    }
-
-
-    return uniqueDelta;
-
-}
-
-
-// ============================================================
-// CUMULATIVE DELTA
-// ============================================================
-//
-// Example:
-//
-// Delta:
-//
-// +100
-// -50
-// +200
-// -75
-//
-// Cumulative:
-//
-// +100
-// +50
-// +250
-// +175
-//
-// This shows whether buying/selling pressure is building
-// over the visible history.
-// ============================================================
-
-function calculateCumulativeDelta(
-    deltaData
-) {
-
-    if (
-        !Array.isArray(
-            deltaData
-        )
-    ) {
-
-        return [];
-
-    }
-
-
-    let cumulative =
-        0;
-
-
-    const result =
-        [];
-
-
-    for (
-        const item of deltaData
-    ) {
-
-        const value =
-            Number(
-                item.value
-            );
-
-
-        if (
-            !Number.isFinite(
-                value
-            )
-        ) {
-
-            continue;
-
-        }
-
-
-        cumulative +=
-            value;
-
-
-        result.push(
-            {
-
-                time:
-                    item.time,
-
-                value:
-                    cumulative
 
             }
         );
 
-    }
 
+    element("loadButton")
+        ?.addEventListener(
+            "click",
+            () => {
 
-    return result;
+                loadMarket();
 
-}
-
-
-// ============================================================
-// PRICE FORMAT
-// ============================================================
-
-function formatPrice(
-    price
-) {
-
-    const numericPrice =
-        Number(
-            price
+            }
         );
 
 
-    if (
-        !Number.isFinite(
-            numericPrice
-        )
-    ) {
-
-        return "—";
-
-    }
-
-
-    if (
-        numericPrice < 0.0001
-    ) {
-
-        return numericPrice.toFixed(
-            8
-        );
-
-    }
-
-
-    if (
-        numericPrice < 0.001
-    ) {
-
-        return numericPrice.toFixed(
-            7
-        );
-
-    }
-
-
-    if (
-        numericPrice < 0.01
-    ) {
-
-        return numericPrice.toFixed(
-            6
-        );
-
-    }
-
-
-    if (
-        numericPrice < 0.1
-    ) {
-
-        return numericPrice.toFixed(
-            5
-        );
-
-    }
-
-
-    if (
-        numericPrice < 1
-    ) {
-
-        return numericPrice.toFixed(
-            4
-        );
-
-    }
-
-
-    if (
-        numericPrice < 100
-    ) {
-
-        return numericPrice.toFixed(
-            2
-        );
-
-    }
-
-
-    return numericPrice.toFixed(
-        2
+    window.addEventListener(
+        "resize",
+        handleResize
     );
 
 }
 
 
-// ============================================================
-// VOLUME FORMAT
-// ============================================================
-
-function formatVolume(
-    value
-) {
-
-    const numeric =
-        Number(
-            value
-        );
-
-
-    if (
-        !Number.isFinite(
-            numeric
-        )
-    ) {
-
-        return "—";
-
-    }
-
-
-    const absolute =
-        Math.abs(
-            numeric
-        );
-
-
-    if (
-        absolute >= 1000000
-    ) {
-
-        return (
-            numeric /
-            1000000
-        ).toFixed(2) +
-        "M";
-
-    }
-
-
-    if (
-        absolute >= 1000
-    ) {
-
-        return (
-            numeric /
-            1000
-        ).toFixed(2) +
-        "K";
-
-    }
-
-
-    return numeric.toFixed(
-        2
-    );
-
-}
-
-
-// ============================================================
-// LAST PRICE
-// ============================================================
-
-function updateCurrentPrice(
-    price
-) {
-
-    const element =
-        document.getElementById(
-            "currentPrice"
-        );
-
-
-    if (
-        !element
-    ) {
-
-        return;
-
-    }
-
-
-    element.textContent =
-        `LAST PRICE: ${formatPrice(price)}`;
-
-}
-
-
-// ============================================================
-// LAST DELTA
-// ============================================================
-
-function updateDeltaValue(
-    deltaData
-) {
-
-    const element =
-        document.getElementById(
-            "deltaValue"
-        );
-
-
-    if (
-        !element
-    ) {
-
-        return;
-
-    }
-
-
-    if (
-        !Array.isArray(
-            deltaData
-        ) ||
-        deltaData.length === 0
-    ) {
-
-        element.textContent =
-            "DELTA: —";
-
-        return;
-
-    }
-
-
-    const last =
-        deltaData[
-            deltaData.length - 1
-        ];
-
-
-    const value =
-        Number(
-            last.value
-        );
-
-
-    if (
-        !Number.isFinite(
-            value
-        )
-    ) {
-
-        element.textContent =
-            "DELTA: —";
-
-        return;
-
-    }
-
-
-    const prefix =
-        value >= 0
-            ? "+"
-            : "";
-
-
-    element.textContent =
-        `DELTA: ${prefix}${formatVolume(value)}`;
-
-}
-
-
-// ============================================================
-// CUMULATIVE DELTA VALUE
-// ============================================================
-
-function updateCumulativeDeltaValue(
-    cumulativeData
-) {
-
-    const element =
-        document.getElementById(
-            "cumulativeDeltaValue"
-        );
-
-
-    if (
-        !element
-    ) {
-
-        return;
-
-    }
-
-
-    if (
-        !Array.isArray(
-            cumulativeData
-        ) ||
-        cumulativeData.length === 0
-    ) {
-
-        element.textContent =
-            "CVD: —";
-
-        return;
-
-    }
-
-
-    const last =
-        cumulativeData[
-            cumulativeData.length - 1
-        ];
-
-
-    const value =
-        Number(
-            last.value
-        );
-
-
-    if (
-        !Number.isFinite(
-            value
-        )
-    ) {
-
-        element.textContent =
-            "CVD: —";
-
-        return;
-
-    }
-
-
-    const prefix =
-        value >= 0
-            ? "+"
-            : "";
-
-
-    element.textContent =
-        `CVD: ${prefix}${formatVolume(value)}`;
-
-}
-
-
-// ============================================================
-// MARKET STATUS
-// ============================================================
-
-function setMarketStatus(
-    text
-) {
-
-    const element =
-        document.getElementById(
-            "marketStatus"
-        );
-
-
-    if (
-        !element
-    ) {
-
-        return;
-
-    }
-
-
-    element.textContent =
-        text;
-
-}
-
-
-// ============================================================
-// SYMBOL CHANGE
-// ============================================================
-
-const symbolElement =
-    document.getElementById(
-        "symbol"
-    );
-
-
-if (
-    symbolElement
-) {
-
-    symbolElement.addEventListener(
-        "change",
-        () => {
-
-            loadWEEXCandles();
-
-        }
-    );
-
-}
-
-
-// ============================================================
-// TIMEFRAME CHANGE
-// ============================================================
-
-const timeframeElement =
-    document.getElementById(
-        "timeframe"
-    );
-
-
-if (
-    timeframeElement
-) {
-
-    timeframeElement.addEventListener(
-        "change",
-        () => {
-
-            loadWEEXCandles();
-
-        }
-    );
-
-}
-
-
-// ============================================================
-// WINDOW RESIZE
-// ============================================================
+/* ============================================================
+INITIALIZE
+============================================================ */
 
 window.addEventListener(
-    "resize",
-    () => {
+    "DOMContentLoaded",
+    async () => {
+
+        try {
+
+            createPriceChart();
 
 
-        if (
-            priceChart
-        ) {
-
-            const container =
-                document.getElementById(
-                    "priceChart"
-                );
+            setupEvents();
 
 
-            if (
-                container
-            ) {
-
-                priceChart.resize(
-                    container.clientWidth,
-                    container.clientHeight
-                );
-
-            }
-
-        }
+            await loadMarket();
 
 
-        if (
-            deltaChart
-        ) {
+        } catch (error) {
 
-            const container =
-                document.getElementById(
-                    "deltaChart"
-                );
+            console.error(
+                "PRICE LAB INITIALIZATION ERROR:",
+                error
+            );
 
 
-            if (
-                container
-            ) {
-
-                deltaChart.resize(
-                    container.clientWidth,
-                    container.clientHeight
-                );
-
-            }
-
-        }
+            setConnection(
+                false
+            );
 
 
-        if (
-            cumulativeDeltaChart
-        ) {
-
-            const container =
-                document.getElementById(
-                    "cumulativeDeltaChart"
-                );
-
-
-            if (
-                container
-            ) {
-
-                cumulativeDeltaChart.resize(
-                    container.clientWidth,
-                    container.clientHeight
-                );
-
-            }
+            setText(
+                "trendMessage",
+                error.message ||
+                "Price Lab initialization failed."
+            );
 
         }
 
